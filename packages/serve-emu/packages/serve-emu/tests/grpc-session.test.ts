@@ -12,6 +12,7 @@ import {
   H264StartupGate,
   androidKeyGestureToKeyboardEvents,
   androidKeycodeToW3c,
+  effectiveRepeatFrameMs,
   grpcImageModeBehavior,
   isUsablePngFrame,
   isUsableRgbFrame,
@@ -2211,5 +2212,23 @@ describe("startGrpcSession integration", () => {
 
     await expect(starting).rejects.toThrow("source switch cancelled");
     expect(client.closed).toBe(true);
+  });
+});
+
+describe("effectiveRepeatFrameMs", () => {
+  test("gRPC capture repeats at its default unless a positive interval is configured", () => {
+    for (const configured of [undefined, 0, -1, Number.NaN]) {
+      expect(effectiveRepeatFrameMs("grpc-screenshot", configured)).toBe(500);
+    }
+    for (const configured of [1, 250, 4_000, 60_000]) {
+      expect(effectiveRepeatFrameMs("grpc-screenshot", configured)).toBe(configured);
+    }
+  });
+
+  test("scrcpy repeats only at a configured interval", () => {
+    expect(effectiveRepeatFrameMs("scrcpy", undefined)).toBe(0);
+    for (const configured of [0, 250, 30_000]) {
+      expect(effectiveRepeatFrameMs("scrcpy", configured)).toBe(configured);
+    }
   });
 });
