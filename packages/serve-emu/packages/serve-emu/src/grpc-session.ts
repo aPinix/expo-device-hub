@@ -1515,11 +1515,6 @@ function nonNegativeInteger(value: number, name: string, maximum: number): numbe
 }
 
 /**
- * Host-side emulator screenshot capture and input, encoded to the same H.264
- * packet contract as scrcpy.
- */
-
-/**
  * The idle repeat interval that a capture source really uses, in milliseconds.
  * `0` means the source sends no repeats. gRPC capture always repeats: an unset,
  * zero, or invalid value falls back to its default. scrcpy repeats only when a
@@ -1532,6 +1527,10 @@ export function effectiveRepeatFrameMs(mode: StreamMode, configured: number | un
   return configured ?? SCRCPY_DEFAULTS.repeatFrameMs;
 }
 
+/**
+ * Host-side emulator screenshot capture and input, encoded to the same H.264
+ * packet contract as scrcpy.
+ */
 export async function startGrpcSession(
   options: StartEmuSessionOptions,
   dependencies: GrpcSessionDependencies = {},
