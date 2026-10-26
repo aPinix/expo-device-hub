@@ -1997,7 +1997,7 @@ function AppWithConfig({
                 >
                   <Upload size={32} strokeWidth={1.5} />
                   <span className="text-[13px] font-medium">
-                    Drop media or a Simulator app archive
+                  Drop media or a Simulator app
                   </span>
                 </div>
               )}
