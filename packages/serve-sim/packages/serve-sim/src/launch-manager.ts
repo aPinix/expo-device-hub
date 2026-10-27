@@ -445,7 +445,24 @@ export async function disarmStaleCapabilityLoader(udid: string): Promise<boolean
   const caller = new Set(additionalDylibs());
   const ours = entries.find((path) => isCapabilityLoaderPath(path) && !caller.has(path));
   if (ours && !existsSync(ours)) {
-    await removeCapabilityLoader(udid);
+    await withLaunchStateLock(udid, async () => {
+      const missing = (await readInsert(udid))
+        .split(":")
+        .find((path) => isCapabilityLoaderPath(path) && !caller.has(path) && !existsSync(path));
+      if (!missing) return;
+      const state = readLaunchState(udid);
+      assertResidentConfigRetained(
+        udid,
+        renderCapabilityConfig(state ?? { launchArgs: [], capabilities: {} }),
+      );
+      // @ref LLP 0007#resident-startup-scope — a guard without its loader cannot enroll later processes
+      if (Object.values(state?.capabilities ?? {}).some((capability) => capability.resident))
+        throw new Error(
+          `Cannot clean up missing resident capability loader ${missing} on ${udid}; ` +
+            `preserve enrollment and its boot assets until that Simulator boot is confirmed dead.`,
+        );
+      await removeCapabilityLoader(udid);
+    });
     return true;
   }
   if (!ours && !managedStartupDylibs(udid).some((path) => entries.includes(path))) return true;
