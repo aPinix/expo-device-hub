@@ -106,7 +106,6 @@ export async function shutdownDevice(udid: string): Promise<void> {
 export async function bootDevice(udid: string): Promise<void> {
   const resident = await checkEgressStreamHelper(udid);
   if (!resident) await simctl(["boot", udid], BOOT_TIMEOUT_MS);
-  await simctl(simulatorBootStatusArgs(udid, resident), BOOT_TIMEOUT_MS);
-  if (resident && !(await checkEgressStreamHelper(udid)))
-    throw new Error("Resident egress enrollment disappeared during the boot wait");
+  await simctl(simulatorBootStatusArgs(udid, !!resident), BOOT_TIMEOUT_MS);
+  if (resident) await checkEgressStreamHelper(udid, resident);
 }

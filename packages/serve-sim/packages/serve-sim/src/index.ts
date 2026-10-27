@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import type { SimulatorBootIdentity } from "./launch-state";
 import {
   checkEgressStreamHelper,
   egressGuardCapability,
@@ -1993,6 +1994,7 @@ async function serve(
     debugStreamPath?: string;
     requireToken?: boolean;
     orphan?: boolean;
+    residentBoots?: Readonly<Record<string, SimulatorBootIdentity>>;
     quiet?: boolean;
     networkCapture?: boolean;
     networkCaptureProxy?: string;
@@ -2005,6 +2007,16 @@ async function serve(
     process.exit(1);
   };
   const targetDevice = targetDevices[0];
+  const verifyResidentBoots = async () => {
+    if (sessionStopping) throw new Error("Session is stopping");
+    for (const [udid, boot] of Object.entries(options.residentBoots ?? {}))
+      await checkEgressStreamHelper(udid, boot);
+  };
+  try {
+    await verifyResidentBoots();
+  } catch (error) {
+    return failStartup(startupErrorMessage(error));
+  }
 
   const capture = await timeStartup("capture-module", () => import("./capture"));
   // The panel can turn capture on too, so a public preview without the token gate refuses it there
@@ -2131,7 +2143,41 @@ async function serve(
     });
 
   let owner: Awaited<ReturnType<typeof startSessionOwner>> | undefined;
+  const failPreviewStartup = async (error: unknown): Promise<never> => {
+    sessionStopping = true;
+    const failures: unknown[] = [error];
+    try {
+      owner?.close();
+    } catch (cleanup) {
+      failures.push(cleanup);
+    }
+    try {
+      previewServer?.stop();
+    } catch (cleanup) {
+      failures.push(cleanup);
+    }
+    try {
+      await disposeSessionResources();
+    } catch (cleanup) {
+      failures.push(cleanup);
+    }
+    for (const udid of targetDevices) {
+      try {
+        clearServeSimState(udid, process.pid);
+      } catch (cleanup) {
+        failures.push(cleanup);
+      }
+    }
+    return failStartup(
+      startupErrorMessage(
+        failures.length === 1
+          ? error
+          : new AggregateError(failures, "Preview startup and cleanup failed"),
+      ),
+    );
+  };
   try {
+    await verifyResidentBoots();
     // @ref LLP 0011#prepared-process-adoption — only an explicit orphan offers ownership.
     if (options.orphan) {
       const startupBoot = bootSession();
@@ -2152,24 +2198,20 @@ async function serve(
         (configuration, signal) => middleware.configureSession(configuration, signal),
       );
     }
+    // Record only after the same resident boot survives preview and ownership setup.
+    await timeStartup("state-publication", async () => {
+      await verifyResidentBoots();
+      for (const udid of targetDevices) {
+        const state = inProcessServeSimState(udid, boundPort, "/", host, options.stream);
+        // Capture CLI commands read this token. A public host without --require-token refuses capture,
+        // so the token is written only where something can use it.
+        const tokenNeeded = requirePreviewToken || isLoopbackHost(host);
+        writeState(tokenNeeded ? { ...state, token: previewToken } : state);
+      }
+    });
   } catch (error) {
-    sessionStopping = true;
-    previewServer?.stop();
-    await disposeSessionResources();
-    return failStartup(error instanceof Error ? error.message : String(error));
+    return failPreviewStartup(error);
   }
-
-  // Record in-process state so the preview/grid enumerate these devices and the
-  // CLI input subcommands can reach the same-origin /helper ws.
-  await timeStartup("state-publication", () => {
-    for (const udid of targetDevices) {
-      const state = inProcessServeSimState(udid, boundPort, "/", host, options.stream);
-      // Capture CLI commands read this token. A public host without --require-token refuses capture,
-      // so the token is written only where something can use it.
-      const tokenNeeded = requirePreviewToken || isLoopbackHost(host);
-      writeState(tokenNeeded ? { ...state, token: previewToken } : state);
-    }
-  });
   // @ref LLP 0011#startup-order — start capture now rather than on the first /readyz, which
   // still waits for this same start before it reports ready, and reports a session that fails.
   for (const udid of targetDevices) {
@@ -2211,6 +2253,11 @@ async function serve(
     if (!quiet) console.log(`  - Stream debug: recording to ${options.debugStreamPath}`);
   }
 
+  try {
+    await verifyResidentBoots();
+  } catch (error) {
+    return failPreviewStartup(error);
+  }
   const exposedToLan = !isLoopbackHost(host);
   const networkIP = getLocalNetworkIP();
   const tokenQuery = requirePreviewToken ? `/?token=${previewToken}` : "";
@@ -2878,6 +2925,7 @@ Examples:
       return;
     }
     let targets = devices;
+    const residentBoots: Record<string, SimulatorBootIdentity> = {};
     const defaultsInitialized = new Set<string>();
     // A preview with no app startup or capture; those keep arming and defaults separate.
     const plainPreview =
@@ -2940,13 +2988,23 @@ Examples:
         }
         // @ref LLP 0011#resident-egress-startup — explicit egress cannot use best-effort capability preparation
         for (const udid of targets) {
+          const observed = isStreamHelper ? await checkEgressStreamHelper(udid) : null;
           const handled = isStreamHelper
-            ? await checkEgressStreamHelper(udid)
+            ? !!observed
             : await requiredEgressStartup(udid, egressPolicy, async () => {
                 if (sessionStopping) throw new Error("Session is stopping");
                 await ensureBooted(udid);
                 if (sessionStopping) throw new Error("Session is stopping");
               });
+          if (observed) {
+            await simctl(simulatorBootStatusArgs(udid, true), BOOT_TIMEOUT_MS);
+            await checkEgressStreamHelper(udid, observed);
+          }
+          if (handled) {
+            const boot = observed ?? (await checkEgressStreamHelper(udid));
+            if (!boot) throw new Error("Resident egress enrollment disappeared during startup");
+            residentBoots[udid] = boot;
+          }
           if (!handled) await ensureBooted(udid);
           if (sessionStopping) return;
         }
@@ -3064,6 +3122,7 @@ Examples:
         quiet: !!opts.quiet,
         networkCapture: !!opts.networkCapture,
         networkCaptureProxy: opts.networkCaptureProxy,
+        residentBoots,
         clipboard: isStreamHelper ? "unmanaged" : !capabilities.disable.includes("clipboard"),
         networkCaptureFields: opts.networkCaptureField,
       });

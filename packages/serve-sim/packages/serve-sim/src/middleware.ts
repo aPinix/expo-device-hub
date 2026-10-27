@@ -908,7 +908,7 @@ export async function startDeviceInProcess(
   const ready = await new Promise<boolean>((resolve) => {
     execFile(
       "xcrun",
-      ["simctl", ...simulatorBootStatusArgs(udid, resident)],
+      ["simctl", ...simulatorBootStatusArgs(udid, !!resident)],
       { timeout: 180_000, env: simulatorBootEnv(udid) },
       (err) => resolve(!err),
     );
@@ -935,11 +935,9 @@ export async function startDeviceInProcess(
     });
     if (!booted) return `Device ${udid} failed to reach booted state`;
   }
-  if (resident && !(await checkEgressStreamHelper(udid)))
-    throw new Error("Resident egress enrollment disappeared during the boot wait");
+  if (resident) await checkEgressStreamHelper(udid, resident);
   await onBoot?.();
-  if (resident && !(await checkEgressStreamHelper(udid)))
-    throw new Error("Resident egress enrollment disappeared before ready");
+  if (resident) await checkEgressStreamHelper(udid, resident);
   writeServeSimState(gridDeviceState(udid, port, base, streamSettings, sessionToken));
   return null;
 }

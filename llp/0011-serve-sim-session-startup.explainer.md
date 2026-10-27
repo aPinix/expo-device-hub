@@ -294,3 +294,9 @@ async boot-capable waits receive the same old-page protection as explicit boots.
 Observers revalidate the native boot before callbacks and ready publication, so a
 replacement during a wait cannot inherit the earlier check
 [observed: boot-status arguments, simctl wrapper, device and middleware source].
+
+The CLI helper carries its checked native boot identity through a non-booting
+readiness wait and preview setup. It rechecks that same identity before writing
+state and before reporting its URL. Failure closes the listener and removes only
+its own session state; cleanup failures retain the original error
+[observed: `src/index.ts`, `src/egress.ts`, `egress-helper-ready` CLI fixture].

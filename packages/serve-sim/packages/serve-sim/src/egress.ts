@@ -1,5 +1,6 @@
 import type { CapabilityDefinition, CapabilityOverrides } from "./capabilities";
 import { withLaunchStateLock } from "./launch-state-lock";
+import type { SimulatorBootIdentity } from "./launch-state";
 import {
   bindResidentEgressBoot,
   checkResidentEgress,
@@ -64,9 +65,20 @@ export async function requiredEgressStartup(
 }
 
 /** Host stream helpers observe the existing boot; they never own a policy choice. */
-export async function checkEgressStreamHelper(udid: string): Promise<boolean> {
-  if (!residentEgress(udid)) return false;
+export async function checkEgressStreamHelper(
+  udid: string,
+  expected?: SimulatorBootIdentity,
+): Promise<SimulatorBootIdentity | null> {
+  if (!residentEgress(udid)) {
+    if (expected) throw new Error("Resident egress enrollment disappeared during helper startup");
+    return null;
+  }
   udid = udid.toUpperCase();
-  await withLaunchStateLock(udid, () => checkResidentEgress(udid));
-  return true;
+  return withLaunchStateLock(udid, async () => {
+    const guard = await checkResidentEgress(udid);
+    const boot = guard.resident!.boot!;
+    if (expected && (boot.pid !== expected.pid || boot.startedAt !== expected.startedAt))
+      throw new Error("Simulator boot changed during helper startup");
+    return { ...boot };
+  });
 }
