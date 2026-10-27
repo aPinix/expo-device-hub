@@ -104,6 +104,8 @@ keeps sidebars reachable, and fits the device above a normal-flow action bar.
 Mobile fitting does not wait for an observer to measure that bar.
 While typing, bottom controls hide. The mobile viewer provides a keyboard toggle
 when the client supports HID text events and an in-page full-screen toggle.
+The right inspector toggle joins that toolbar; the left device toggle stays separate.
+Opening the inspector leaves full screen so its dashboard panel is interactive.
 Full-screen controls preserve capture focus. Tablet and desktop layouts retain
 their existing title, padding, and controls. [observed: Hub `Dashboard.tsx`,
 HubComponents `StreamPanel.tsx`, HubClient `useMobileViewport.ts`]

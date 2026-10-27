@@ -394,6 +394,8 @@ export default function Dashboard(_props: { dom?: import("expo/dom").DOMProps })
           showDeviceFrame={showDeviceFrame}
           deviceFrameAssets={DEVICE_FRAME_ASSETS}
           onClipboardFallback={handleClipboardFallback}
+          onToggleInspector={sidebars.rightOpen ? sidebars.closeRight : sidebars.openRight}
+          inspectorOpen={sidebars.rightOpen}
         />
       ) : (
         <EmptyState
@@ -510,7 +512,7 @@ export default function Dashboard(_props: { dom?: import("expo/dom").DOMProps })
         />
       )}
 
-      {!sidebars.rightOpen && (
+      {!sidebars.rightOpen && !(viewport.mobile && selected) && (
         <FloatingSidebarToggle
           side="right"
           inset={floatingSidebarToggleInset(

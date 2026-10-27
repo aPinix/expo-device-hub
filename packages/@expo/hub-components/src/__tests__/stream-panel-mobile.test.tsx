@@ -40,6 +40,7 @@ function render(width: number) {
         }
         DeviceScreen={() => <div>Stream</div>}
         displayScreen={(screen) => screen ?? null}
+        onToggleInspector={() => {}}
       />,
     );
   } finally {
@@ -53,6 +54,7 @@ test("mobile hides the title and offers viewer keyboard and full screen controls
   expect(html).not.toContain("Test phone");
   expect(html).toContain('aria-label="Full screen"');
   expect(html).toContain('aria-label="Keyboard"');
+  expect(html).toContain('aria-label="Toggle inspector"');
   expect(html).toContain("font-size:16px");
 });
 
@@ -61,4 +63,5 @@ test("desktop keeps its title and original controls", () => {
   expect(html).toContain("Test phone");
   expect(html).not.toContain('aria-label="Full screen"');
   expect(html).toContain('aria-label="Home"');
+  expect(html).not.toContain('aria-label="Toggle inspector"');
 });
