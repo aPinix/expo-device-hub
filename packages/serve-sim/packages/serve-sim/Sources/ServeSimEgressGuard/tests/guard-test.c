@@ -88,6 +88,14 @@ int main(int argc, char **argv) {
     int duplicate = dup(udp); REQUIRE(duplicate >= 0);
     expect_sends(tcp, accepted, 0); expect_sends(udp, receiver, 0);
     atomic_store_explicit(&page->policy, (UINT64_C(2) << 2) | 2, memory_order_release);
+    void (*baseline_block)(void) = dlsym(RTLD_DEFAULT, "serve_sim_test_enable_block");
+    if (baseline_block) {
+      baseline_block();
+      int probe = socket(AF_INET, SOCK_STREAM, 0); REQUIRE(probe >= 0);
+      REQUIRE(connect(probe, (struct sockaddr *)&tcp_address, sizeof tcp_address) == -1 && errno == ECONNREFUSED);
+      close(probe);
+      puts("baseline block mode verified");
+    }
     expect_sends(tcp, accepted, 1); expect_sends(udp, receiver, 1); expect_sends(duplicate, receiver, 1);
     expect_nocancel(tcp, accepted); expect_nocancel(udp, receiver);
     CHECK(sendto(udp, "x", 1, 0, (struct sockaddr *)&udp_address, sizeof udp_address) == -1 && errno == ECONNREFUSED);

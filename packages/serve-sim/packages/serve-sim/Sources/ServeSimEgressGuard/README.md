@@ -34,12 +34,20 @@ python3 tests/run.py \
 ```
 
 The runner copies baseline source, compiles only into a private `/tmp` directory,
-uses loopback peers, and deletes its build directory after retaining logs/results
-outside the repo. It first demonstrates the old-socket regression against today's
-guard, then tests the prototype. Behavior tests explicitly classify loopback as
+uses loopback peers, and deletes only its freshly created build directory after
+retaining logs/results outside the repo. Caller work directories are not accepted.
+It first establishes sockets in today's guard's log mode, uses a test-only setter
+to enable its cached block mode, verifies new connects are refused, and then
+demonstrates the old-socket gap. Behavior tests classify one loopback test peer as
 remote in both libraries; benchmarks use unmodified classification. `--skip-benchmark`
 runs behavior checks only. Performance compares no guard, today's guard, resident
 pass-through and resident block in randomized paired rounds.
+
+Run the runner's cleanup tests without clang or networking:
+
+```sh
+python3 tests/runner_test.py
+```
 
 Results are **macOS host mechanism only**. Measurable pass-through regression
 against no guard, or block regression against today's guard, stops integration.

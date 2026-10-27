@@ -7,10 +7,9 @@
 
 static int eg_v4_local(uint32_t address) {
 #ifdef SERVE_SIM_EGRESS_TEST_REMOTE_LOOPBACK
-  (void)address; return 0; // host behavior tests only; never used in benchmarks
-#else
-  return (address >> 24) == 127 || address == 0;
+  if (address == UINT32_C(0x7f000001)) return 0; // deny only the host test peer
 #endif
+  return (address >> 24) == 127 || address == 0;
 }
 
 static int eg_remote(const struct sockaddr *sa, socklen_t size) {

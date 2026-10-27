@@ -16,7 +16,6 @@ import tempfile
 parser = argparse.ArgumentParser()
 parser.add_argument("--baseline-dir", type=Path, required=True, help="Read-only EAS egress-guard source")
 parser.add_argument("--evidence", type=Path, required=True, help="New external directory for logs/results")
-parser.add_argument("--work-dir", type=Path, help="Existing private temporary directory owned by this run")
 parser.add_argument("--skip-benchmark", action="store_true")
 parser.add_argument("--rounds", type=int, default=21)
 args = parser.parse_args()
@@ -24,14 +23,12 @@ if platform.system() != "Darwin" or args.rounds < 7:
     parser.error("macOS required; benchmark needs at least seven paired rounds")
 source = Path(__file__).resolve().parent.parent
 repository = source.parents[5]
-work = args.work_dir or Path(tempfile.mkdtemp(prefix="serve-sim-egress-", dir="/tmp"))
-work = work.resolve()
-if work.parent != Path("/tmp").resolve() or not work.name.startswith("serve-sim-egress-") or work.is_symlink():
-    parser.error("work directory must be an owned /tmp/serve-sim-egress-* directory")
 args.evidence = args.evidence.resolve()
-if args.evidence.is_relative_to(work) or args.evidence.is_relative_to(repository):
-    parser.error("evidence must be outside source and the temporary work directory")
+if args.evidence.is_relative_to(repository):
+    parser.error("evidence must be outside the repository")
 args.evidence.mkdir(parents=True, exist_ok=False)
+work_scope = tempfile.TemporaryDirectory(prefix="serve-sim-egress-", dir="/tmp")
+work = Path(work_scope.name)
 log = (work / "tests.log").open("w", buffering=1)
 results = {"label": "macOS host mechanism only", "platform": platform.platform(), "cases": []}
 
@@ -71,7 +68,10 @@ try:
     needle = "return (host_order >> 24) == 127 || host_order == 0;"
     if old_policy.count(needle) != 1:
         raise RuntimeError("Baseline classification changed; inspect test adaptation")
-    (baseline / "policy.c").write_text(old_policy.replace(needle, "(void)host_order; return 0;"))
+    (baseline / "policy.c").write_text(old_policy.replace(needle, "return host_order != UINT32_C(0x7f000001) && ((host_order >> 24) == 127 || host_order == 0);"))
+    # Test-only mutation: exercise today's actual blocking mode after sockets exist.
+    with (baseline / "guard.c").open("a") as baseline_guard:
+        baseline_guard.write("\nvoid serve_sim_test_enable_block(void) { eg_mode = EG_MODE_BLOCK; }\n")
     run(flags + ["-dynamiclib", baseline / "guard.c", baseline / "policy.c", "-o", work / "today-test.dylib"])
     run(flags + [source / "tests/guard-test.c", "-o", work / "behavior"])
     page = work / "behavior.page"
@@ -82,8 +82,10 @@ try:
     base.pop("EAS_EGRESS_GUARD_LOG", None)
     old_env = dict(base, DYLD_INSERT_LIBRARIES=str(work / "today-test.dylib"),
                    EAS_EGRESS_GUARD_MODE="log", SERVE_SIM_EGRESS_POLICY_FILE=str(page))
-    run([work / "behavior", page, "transitions"], old_env, expected=1)
-    check("behavioral regression fails against today's guard")
+    baseline_result = run([work / "behavior", page, "transitions"], old_env, expected=1)
+    if "baseline block mode verified" not in baseline_result:
+        raise RuntimeError("Baseline did not prove blocking was enabled")
+    check("today's guard blocks fresh connections but fails the old-socket regression")
     for name, extra in [("guard", []), ("guard-test", ["-DSERVE_SIM_EGRESS_TEST_REMOTE_LOOPBACK"])]:
         run(flags + ["-dynamiclib"] + extra + [source / "egress-guard.c", source / "policy.c", "-o", work / (name + ".dylib")])
     run(flags + [source / "control.c", source / "policy.c", "-o", work / "control"])
@@ -93,6 +95,11 @@ try:
     env = dict(base, DYLD_INSERT_LIBRARIES=str(work / "guard-test.dylib"), SERVE_SIM_EGRESS_POLICY_FILE=str(page))
     run([work / "behavior", page, "transitions"], env)
     check("old TCP/UDP, send/write/writev/sendto/sendmsg, NOCANCEL, connectx, dup/reuse, Unix/files, live transitions")
+    run(flags + [source / "tests/edge-test.c", "-o", work / "edges"])
+    fixture(page)
+    run([control, "create", page, "passthrough"])
+    run([work / "edges", page], env)
+    check("TCP decoy destinations, AF_UNSPEC UDP connectx and unreadable syscall structures")
     for name, contents, permissions in [("missing", None, 0o600), ("short", bytes(8), 0o600),
                                         ("magic", bytes(4096), 0o600), ("permissions", initial, 0o644)]:
         invalid = work / (name + ".page")
@@ -161,8 +168,10 @@ except Exception as error:
     results["error"] = repr(error)
     raise
 finally:
-    log.close()
-    shutil.copyfile(work / "tests.log", args.evidence / "tests.log")
-    (args.evidence / "results.json").write_text(json.dumps(results, indent=2) + "\n")
-    shutil.rmtree(work)
+    try:
+        log.close()
+        shutil.copyfile(work / "tests.log", args.evidence / "tests.log")
+        (args.evidence / "results.json").write_text(json.dumps(results, indent=2) + "\n")
+    finally:
+        work_scope.cleanup()
 print(json.dumps(results, indent=2))
