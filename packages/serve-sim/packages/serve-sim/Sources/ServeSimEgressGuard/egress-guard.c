@@ -1,4 +1,4 @@
-// Local native prototype; not wired into serve-sim startup or warm adoption.
+// Resident guard; startup and warm-adoption integration is pending.
 // @ref LLP 0007.001#covered-operations-and-transition-result — publication does not drain calls that already sampled pass-through
 #include "policy.h"
 #include "destination.h"
@@ -64,7 +64,7 @@ static int eg_peer_remote(int fd, int require_peer) {
                address.ss_family == AF_INET || address.ss_family == AF_INET6;
     }
   }
-  // Files/Unix sockets pass through. Concurrent fd replacement is outside this prototype's guarantee.
+  // Files/Unix sockets pass through. Concurrent fd replacement is outside the covered operations.
   errno = saved;
   return remote;
 }

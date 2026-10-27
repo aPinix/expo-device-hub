@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Host-only prototype tests. Compiles in a private directory, never in dist."""
+"""Host-only resident guard tests. Compiles in a private directory, never in dist."""
 import argparse
 import concurrent.futures
 import json

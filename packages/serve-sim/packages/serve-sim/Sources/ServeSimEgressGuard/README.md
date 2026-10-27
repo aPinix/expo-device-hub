@@ -1,8 +1,14 @@
-# Local resident egress prototype
+# Resident egress guard
 
-This directory is a native experiment for [LLP 0007.001](../../../../../../llp/0007.001-runtime-egress-local.plan.md).
-It is not registered, packaged or enabled by serve-sim. Boot, `--adopt`, capture,
-recording and the existing EAS cold fallback are unchanged.
+The guard stays loaded while its policy switches between pass-through and block.
+This directory contains the native dylib, shared policy page, control helper and
+host tests. [LLP 0007.001](../../../../../../llp/0007.001-runtime-egress-local.plan.md)
+describes the capability-loader and startup/adoption integration.
+
+The native implementation is not yet registered, packaged or enabled by serve-sim.
+The initial performance gate failed, and all-process coverage, draining and
+Simulator validation remain open. Boot, `--adopt`, capture, recording and the
+existing EAS cold fallback keep their current behavior.
 
 The guard must be preloaded at process startup. Its immutable boot-env test
 adapter is `SERVE_SIM_EGRESS_POLICY_FILE`, pointing to a private control page
@@ -18,7 +24,7 @@ Pass-through is an atomic check followed by the original operation. Block mode
 checks destinations on connect/connectx and sendto/sendmsg, and the peer on
 destination-less send/write/writev (including relevant NOCANCEL symbols). No fd
 cache is used. Destination classification follows build-tools' guard; event
-logging/reporting is not ported in this experiment.
+logging/reporting is not implemented here.
 
 Publication does not drain calls that previously sampled pass-through. Direct
 syscalls, sendfile/sendmsg_x, other interposers introduced by late dlopen,

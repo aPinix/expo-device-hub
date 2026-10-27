@@ -1,4 +1,4 @@
-// Local prototype controller. Publication is not an all-process drain or admission ack.
+// Policy controller. Publication is not an all-process drain or admission ack.
 #include "policy.h"
 #include <errno.h>
 #include <fcntl.h>
