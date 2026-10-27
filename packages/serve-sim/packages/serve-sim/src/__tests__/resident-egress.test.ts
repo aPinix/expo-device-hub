@@ -145,3 +145,21 @@ if [ "$5" = "getenv" ] && [ "$6" = "DYLD_INSERT_LIBRARIES" ]; then echo '${guard
     expect(existsSync(nativeLog)).toBe(false);
   });
 }
+
+test("generic first enrollment refuses late insertion before changing an ordinary config", async () => {
+  const guard = enrollment();
+  const config = "user\t/camera.dylib\t\t0\n";
+  writeFileSync(capabilityConfigPath(udid), config);
+  const nativeLog = join(state.dir, "native-calls");
+  await withShimsAsync(
+    { xcrun: `#!/bin/sh\necho called >> '${nativeLog}'\nexit 99\n` },
+    async () => {
+      await expect(
+        enableCapabilities(udid, null, [guard], { ownerPid: null, relaunch: false }),
+      ).rejects.toThrow("preboot");
+    },
+  );
+  expect(readFileSync(capabilityConfigPath(udid), "utf8")).toBe(config);
+  expect(existsSync(join(state.dir, `launch-${udid}.json`))).toBe(false);
+  expect(existsSync(nativeLog)).toBe(false);
+});

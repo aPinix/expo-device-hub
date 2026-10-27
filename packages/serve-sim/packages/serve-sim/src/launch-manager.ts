@@ -790,6 +790,11 @@ async function enableCapabilitiesUnlocked(
     udid,
     renderCapabilityConfig(previous ?? { launchArgs: [], capabilities: {} }),
   );
+  if (capabilities.some((capability) => capability.scope === "allProcesses")) {
+    throw new Error(
+      "Resident all-process capabilities require preboot preparation; they cannot be enabled through a running Simulator's launchctl.",
+    );
+  }
   const dylib = capabilityLoaderPath();
   if (!existsSync(dylib)) {
     throw new Error(
