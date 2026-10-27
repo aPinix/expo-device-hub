@@ -1,0 +1,168 @@
+#!/usr/bin/env python3
+"""Host-only prototype tests. Compiles in a private directory, never in dist."""
+import argparse
+import concurrent.futures
+import json
+import os
+from pathlib import Path
+import platform
+import random
+import shutil
+import statistics
+import struct
+import subprocess
+import tempfile
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--baseline-dir", type=Path, required=True, help="Read-only EAS egress-guard source")
+parser.add_argument("--evidence", type=Path, required=True, help="New external directory for logs/results")
+parser.add_argument("--work-dir", type=Path, help="Existing private temporary directory owned by this run")
+parser.add_argument("--skip-benchmark", action="store_true")
+parser.add_argument("--rounds", type=int, default=21)
+args = parser.parse_args()
+if platform.system() != "Darwin" or args.rounds < 7:
+    parser.error("macOS required; benchmark needs at least seven paired rounds")
+source = Path(__file__).resolve().parent.parent
+repository = source.parents[5]
+work = args.work_dir or Path(tempfile.mkdtemp(prefix="serve-sim-egress-", dir="/tmp"))
+work = work.resolve()
+if work.parent != Path("/tmp").resolve() or not work.name.startswith("serve-sim-egress-") or work.is_symlink():
+    parser.error("work directory must be an owned /tmp/serve-sim-egress-* directory")
+args.evidence = args.evidence.resolve()
+if args.evidence.is_relative_to(work) or args.evidence.is_relative_to(repository):
+    parser.error("evidence must be outside source and the temporary work directory")
+args.evidence.mkdir(parents=True, exist_ok=False)
+log = (work / "tests.log").open("w", buffering=1)
+results = {"label": "macOS host mechanism only", "platform": platform.platform(), "cases": []}
+
+
+def run(command, env=None, expected=0):
+    command = list(map(str, command))
+    value = subprocess.run(command, cwd=work, env=env, text=True, stdout=subprocess.PIPE,
+                           stderr=subprocess.STDOUT, timeout=30)
+    log.write(repr(command) + "\n" + value.stdout + "\nexit=" + str(value.returncode) + "\n")
+    if value.returncode != expected:
+        raise RuntimeError(value.stdout or repr(command))
+    return value.stdout
+
+
+def fixture(path, contents=None, mode=0o600):
+    if path.exists() or path.is_symlink():
+        path.unlink()
+    if contents is not None:
+        path.write_bytes(contents)
+        path.chmod(mode)
+
+
+def check(name):
+    results["cases"].append({"name": name, "pass": True})
+
+
+try:
+    flags = ["clang", "-std=c11", "-O2", "-Wall", "-Wextra", "-Werror", "-Wconversion", "-Wshadow"]
+    results["compiler"] = run(["clang", "--version"]).splitlines()[0]
+    baseline = work / "baseline"
+    baseline.mkdir(exist_ok=True)
+    for name in ["guard.c", "policy.c", "policy.h"]:
+        shutil.copyfile(args.baseline_dir / name, baseline / name)
+    run(flags + ["-dynamiclib", baseline / "guard.c", baseline / "policy.c", "-o", work / "today.dylib"])
+    # Behavioral regression uses local peers classified remote in BOTH implementations.
+    old_policy = (baseline / "policy.c").read_text()
+    needle = "return (host_order >> 24) == 127 || host_order == 0;"
+    if old_policy.count(needle) != 1:
+        raise RuntimeError("Baseline classification changed; inspect test adaptation")
+    (baseline / "policy.c").write_text(old_policy.replace(needle, "(void)host_order; return 0;"))
+    run(flags + ["-dynamiclib", baseline / "guard.c", baseline / "policy.c", "-o", work / "today-test.dylib"])
+    run(flags + [source / "tests/guard-test.c", "-o", work / "behavior"])
+    page = work / "behavior.page"
+    initial = struct.pack("=QQQ", 0x5353454755415244, 5, 1) + bytes(4096 - 24)
+    fixture(page, initial)
+    base = os.environ.copy()
+    base.pop("DYLD_INSERT_LIBRARIES", None)
+    base.pop("EAS_EGRESS_GUARD_LOG", None)
+    old_env = dict(base, DYLD_INSERT_LIBRARIES=str(work / "today-test.dylib"),
+                   EAS_EGRESS_GUARD_MODE="log", SERVE_SIM_EGRESS_POLICY_FILE=str(page))
+    run([work / "behavior", page, "transitions"], old_env, expected=1)
+    check("behavioral regression fails against today's guard")
+    for name, extra in [("guard", []), ("guard-test", ["-DSERVE_SIM_EGRESS_TEST_REMOTE_LOOPBACK"])]:
+        run(flags + ["-dynamiclib"] + extra + [source / "egress-guard.c", source / "policy.c", "-o", work / (name + ".dylib")])
+    run(flags + [source / "control.c", source / "policy.c", "-o", work / "control"])
+    control = work / "control"
+    fixture(page)
+    run([control, "create", page, "passthrough"])
+    env = dict(base, DYLD_INSERT_LIBRARIES=str(work / "guard-test.dylib"), SERVE_SIM_EGRESS_POLICY_FILE=str(page))
+    run([work / "behavior", page, "transitions"], env)
+    check("old TCP/UDP, send/write/writev/sendto/sendmsg, NOCANCEL, connectx, dup/reuse, Unix/files, live transitions")
+    for name, contents, permissions in [("missing", None, 0o600), ("short", bytes(8), 0o600),
+                                        ("magic", bytes(4096), 0o600), ("permissions", initial, 0o644)]:
+        invalid = work / (name + ".page")
+        fixture(invalid, contents, permissions)
+        env["SERVE_SIM_EGRESS_POLICY_FILE"] = str(invalid)
+        run([work / "behavior", invalid, "invalid"], env)
+        run([control, "status", invalid], expected=1)
+        check(name + " control state blocks covered remote calls; files/Unix continue")
+    link = work / "linked.page"
+    fixture(link)
+    link.symlink_to(page)
+    env["SERVE_SIM_EGRESS_POLICY_FILE"] = str(link)
+    run([work / "behavior", link, "invalid"], env)
+    run([control, "status", link], expected=1)
+    run([control, "create", page], expected=2)
+    run([control, "create", page, "block"], expected=1)
+    check("symlinks, implicit warmup choice, and replacement of existing page refused")
+    concurrent_page = work / "writers.page"
+    fixture(concurrent_page)
+    run([control, "create", concurrent_page, "block"])
+    inode = concurrent_page.stat().st_ino
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+        values = list(pool.map(lambda n: json.loads(run([control, "set", concurrent_page,
+                              "block" if n % 2 else "passthrough"])), range(64)))
+    assert sorted(x["publishedGeneration"] for x in values) == list(range(2, 66))
+    assert all(x["drained"] is False and x["warmupPolicy"] == "block" for x in values)
+    assert concurrent_page.stat().st_ino == inode
+    check("64 concurrent publications have unique generations and retain inode and explicit warmup choice")
+
+    if not args.skip_benchmark:
+        run(flags + [source / "tests/benchmark.c", "-o", work / "benchmark"])
+        envs = {"none": base, "today": dict(base, DYLD_INSERT_LIBRARIES=str(work / "today.dylib"), EAS_EGRESS_GUARD_MODE="block")}
+        for mode in ["passthrough", "block"]:
+            policy = work / (mode + ".page")
+            fixture(policy)
+            run([control, "create", policy, mode])
+            envs[mode] = dict(base, DYLD_INSERT_LIBRARIES=str(work / "guard.dylib"), SERVE_SIM_EGRESS_POLICY_FILE=str(policy))
+        randomizer = random.Random(20261026)
+        samples, summary = {}, {}
+        for case, iterations in [("file_write", 100000), ("file_writev", 100000), ("null_write", 300000), ("udp_send", 40000)]:
+            values = {mode: [] for mode in envs}
+            for n in range(args.rounds + 2):
+                order = list(envs)
+                randomizer.shuffle(order)
+                for mode in order:
+                    ns = float(run([work / "benchmark", case, iterations, work / "benchmark-file"], envs[mode]))
+                    if n >= 2:
+                        values[mode].append(ns)
+            samples[case] = values
+            comparisons = {}
+            for variant, baseline_name in [("passthrough", "none"), ("block", "today")]:
+                differences = [x - y for x, y in zip(values[variant], values[baseline_name])]
+                bootstrap = sorted(statistics.median(randomizer.choices(differences, k=args.rounds)) for _ in range(10000))
+                comparisons[variant + "_minus_" + baseline_name] = {
+                    "paired_median_delta_ns": statistics.median(differences),
+                    "bootstrap_95_ci_ns": [bootstrap[249], bootstrap[9749]],
+                    "stop_gate": bootstrap[249] > 0,
+                }
+            summary[case] = {"median_ns": {mode: statistics.median(v) for mode, v in values.items()}, "comparisons": comparisons}
+            print(case, summary[case], flush=True)
+        results["benchmark_ns_per_call"] = samples
+        results["benchmark_summary"] = summary
+    results["status"] = "PASS_BEHAVIOR_ONLY"
+except Exception as error:
+    results["status"] = "FAIL"
+    results["error"] = repr(error)
+    raise
+finally:
+    log.close()
+    shutil.copyfile(work / "tests.log", args.evidence / "tests.log")
+    (args.evidence / "results.json").write_text(json.dumps(results, indent=2) + "\n")
+    shutil.rmtree(work)
+print(json.dumps(results, indent=2))

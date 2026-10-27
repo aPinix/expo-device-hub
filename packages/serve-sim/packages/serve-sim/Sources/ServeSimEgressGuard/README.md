@@ -1,0 +1,49 @@
+# Local resident egress prototype
+
+This directory is a native experiment for [LLP 0007.001](../../../../../../llp/0007.001-runtime-egress-local.plan.md).
+It is not registered, packaged or enabled by serve-sim. Boot, `--adopt`, capture,
+recording and the existing EAS cold fallback are unchanged.
+
+The guard must be preloaded at process startup. Its immutable boot-env test
+adapter is `SERVE_SIM_EGRESS_POLICY_FILE`, pointing to a private control page
+created before startup. The host control helper requires an explicit
+`create /absolute/page passthrough|block`; `set` publishes a mode/generation on
+the same inode. There is no warmup default. Missing or invalid state blocks
+covered remote calls; Unix sockets, files and loopback continue. `status` checks
+the page, not whether the guard is loaded in another process.
+
+Pass-through is an atomic check followed by the original operation. Block mode
+checks destinations on connect/connectx and sendto/sendmsg, and the peer on
+destination-less send/write/writev (including relevant NOCANCEL symbols). No fd
+cache is used. Destination classification follows build-tools' guard; event
+logging/reporting is not ported in this experiment.
+
+Publication does not drain calls that previously sampled pass-through. Direct
+syscalls, sendfile/sendmsg_x, other interposers introduced by late dlopen,
+uninstrumented processes and concurrent fd replacement between check/use are
+outside coverage. Simulator-external processes are outside the guard. Never
+unlink, replace or truncate a live page: existing processes keep its mapping;
+truncation can fault. These lifecycle conditions need an owning boot integration.
+
+Run on macOS with clang and Python's standard library, with no Simulator:
+
+```sh
+python3 tests/run.py \
+  --baseline-dir /absolute/read-only/build-tools/resources/egress-guard \
+  --evidence /absolute/new/evidence-directory
+```
+
+The runner copies baseline source, compiles only into a private `/tmp` directory,
+uses loopback peers, and deletes its build directory after retaining logs/results
+outside the repo. It first demonstrates the old-socket regression against today's
+guard, then tests the prototype. Behavior tests explicitly classify loopback as
+remote in both libraries; benchmarks use unmodified classification. `--skip-benchmark`
+runs behavior checks only. Performance compares no guard, today's guard, resident
+pass-through and resident block in randomized paired rounds.
+
+Results are **macOS host mechanism only**. Measurable pass-through regression
+against no guard, or block regression against today's guard, stops integration.
+Warm readiness must eventually self-check resident image/control state and fall
+back cold on failure. All-process enforcement acknowledgement, loader wiring,
+Simulator validation, packaging, proxy readiness and hosted acceptance remain
+separate gates.
