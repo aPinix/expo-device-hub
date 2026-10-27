@@ -256,3 +256,27 @@ with a bounded cache. A failed capture start remains cached until the session is
 replaced; a later ready response from the replacement logs recovery. The
 startup logs leave `--quiet` stdout JSON unchanged
 [observed: `src/middleware.ts`, `src/startup-timing.ts`].
+
+## Resident egress startup
+
+An explicit `--enable egressGuard` or `--disable egressGuard` takes a strict path
+before boot, app actions or preview readiness. It does not use the ordinary
+best-effort capability preparation path. The initial choice supplies the required
+warmup policy: block for enable, pass-through for disable; neither is a default.
+Conflicting choices fail before device operations [observed: `src/index.ts`,
+`src/egress.ts`].
+
+Preboot preparation creates a private set of pinned artifacts and one policy page,
+then records enrollment and its startup config before the selected device boots.
+Postboot binding records the native `launchd_sim` PID and microsecond start time.
+Page replacement, changed artifacts or a different boot invalidate reuse. Session
+release retains enrollment; uncertain postboot cleanup retains its files. These
+checks establish identity and page validity, not all-process coverage or in-flight
+draining [observed: `src/egress-resources.ts`].
+
+The current admission check rejects explicit egress startup because the native
+coverage/drain protocol and performance validation are unavailable. There is no
+runtime bypass flag. Source integration, adapter tests, native execution and
+Simulator acceptance are separate stages; see
+[LLP 0007.001](0007.001-runtime-egress-local.plan.md)
+[observed: required startup path and retained validation limits].

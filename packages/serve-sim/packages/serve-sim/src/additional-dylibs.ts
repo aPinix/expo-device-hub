@@ -5,6 +5,7 @@ import {
   capabilityLoaderDir,
   capabilityLoaderPath,
 } from "./capability-config";
+import { readLaunchState } from "./launch-state";
 
 export function additionalDylibs(): string[] {
   return [...new Set((process.env.SERVE_SIM_ADDITIONAL_DYLIBS ?? "").split(":").filter(Boolean))];
@@ -24,16 +25,23 @@ export function validatedAdditionalDylibs(): string[] {
 }
 
 // @ref LLP 0011#additional-boot-dylibs — simctl passes child variables into the simulator at boot.
-export function simulatorBootEnv(udid: string): NodeJS.ProcessEnv {
+export function simulatorBootEnv(udid: string, booting = false): NodeJS.ProcessEnv {
   const additional = validatedAdditionalDylibs();
-  if (!additional.length) return { ...process.env };
+  const resident = readLaunchState(udid)?.capabilities.egressGuard;
+  if (booting && resident?.resident?.boot) {
+    throw new Error(
+      "A new Simulator boot requires fresh resident egress enrollment; the previous page cannot be reused.",
+    );
+  }
+  if (!additional.length && !resident?.resident) return { ...process.env };
   const capture = join(capabilityLoaderDir(), "..", "simnet", "libSimNetProxy.dylib");
   return {
     ...process.env,
     SIMCTL_CHILD_DYLD_INSERT_LIBRARIES: [
       ...new Set([
         ...(process.env.SIMCTL_CHILD_DYLD_INSERT_LIBRARIES ?? "").split(":").filter(Boolean),
-        capabilityLoaderPath(),
+        capabilityLoaderPath(udid),
+        ...(resident?.resident ? [resident.dylib] : []),
         ...(existsSync(capture) ? [capture] : []),
         ...additional,
       ]),

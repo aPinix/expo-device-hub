@@ -319,7 +319,7 @@ async function publishLaunchState(
     commitCapabilityConfig(udid, withdrawnOnly);
     await armInsert(
       udid,
-      capabilityLoaderPath(),
+      capabilityLoaderPath(udid),
       state.capabilities,
       previous.startupDylibs,
       previous.configPath,
@@ -360,7 +360,7 @@ function removeReleasedStartupSync(udid: string, previousStartup: string[]): voi
 
 /** Arm the loader and republish the recorded capabilities; rejects if publication fails. */
 export async function rearmCapabilityLoader(udid: string): Promise<void> {
-  const dylib = capabilityLoaderPath();
+  const dylib = capabilityLoaderPath(udid);
   if (!existsSync(dylib)) {
     throw new Error(
       `Capability loader not found at ${dylib}, so capabilities on ${udid} cannot be restored. ` +
@@ -789,7 +789,7 @@ async function enableCapabilitiesUnlocked(
       "Resident all-process capabilities require preboot preparation; they cannot be enabled through a running Simulator's launchctl.",
     );
   }
-  const dylib = capabilityLoaderPath();
+  const dylib = capabilityLoaderPath(udid);
   if (!existsSync(dylib)) {
     throw new Error(
       `Capability loader not built: ${dylib} is missing. Run \`bun run packages/serve-sim/build.ts\` ` +

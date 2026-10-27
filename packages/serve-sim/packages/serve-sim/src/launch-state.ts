@@ -32,6 +32,7 @@ export interface RecordedCapability extends Capability {
     /** Null only between preboot preparation and binding the new Simulator boot. */
     boot: SimulatorBootIdentity | null;
     warmupPolicy: "passthrough" | "block";
+    assets?: { hashes: Record<string, string>; pageIdentity: string };
   };
 }
 

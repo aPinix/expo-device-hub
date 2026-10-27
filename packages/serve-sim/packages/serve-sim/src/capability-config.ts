@@ -1,5 +1,5 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "fs";
-import { isAbsolute, join } from "path";
+import { dirname, isAbsolute, join } from "path";
 import type { CapabilityScope } from "./capabilities";
 import { readLaunchState, type LaunchState, type RecordedCapability } from "./launch-state";
 import { stateDir } from "./state";
@@ -9,7 +9,9 @@ export function capabilityLoaderDir(): string {
   return join(dirnameOf(import.meta.url), "..", "dist", "capability-loader");
 }
 
-export function capabilityLoaderPath(): string {
+export function capabilityLoaderPath(udid?: string): string {
+  const enrolled = udid ? readLaunchState(udid)?.capabilities.egressGuard : undefined;
+  if (enrolled?.resident) return join(dirname(enrolled.dylib), "libServeSimCapabilityLoader.dylib");
   return join(capabilityLoaderDir(), "libServeSimCapabilityLoader.dylib");
 }
 

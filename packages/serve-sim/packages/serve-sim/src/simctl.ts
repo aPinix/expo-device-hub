@@ -71,7 +71,7 @@ export async function simctlRaw(
     maxBuffer: options.maxBuffer,
     env: {
       ...(args[0] === "boot" || args[0] === "bootstatus"
-        ? simulatorBootEnv(args[1]!)
+        ? simulatorBootEnv(args[1]!, args[0] === "boot")
         : process.env),
       ...options.env,
     },

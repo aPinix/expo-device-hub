@@ -1,5 +1,11 @@
 #!/usr/bin/env node
 import {
+  checkEgressStreamHelper,
+  egressGuardCapability,
+  egressPolicyOverride,
+  requiredEgressStartup,
+} from "./egress";
+import {
   RECORDING_FINALIZATION_WAIT_MS,
   RECORDING_RECONCILIATION_WAIT_MS,
 } from "./recording-timeouts";
@@ -2733,14 +2739,25 @@ Examples:
       );
       process.exit(1);
     }
-    const capabilities: { enable: string[]; disable: string[] } = {
+    const requestedCapabilities: { enable: string[]; disable: string[] } = {
       enable: (opts.enable as string[] | undefined) ?? [],
       disable: (opts.disable as string[] | undefined) ?? [],
     };
+    const capabilities = {
+      enable: requestedCapabilities.enable.filter((name) => name !== "egressGuard"),
+      disable: requestedCapabilities.disable.filter((name) => name !== "egressGuard"),
+    };
+    let egressPolicy: ReturnType<typeof egressPolicyOverride>;
     try {
-      assertKnownCapabilities([...capabilities.enable, ...capabilities.disable]);
+      assertKnownCapabilities([...requestedCapabilities.enable, ...requestedCapabilities.disable]);
     } catch (error) {
       console.error(error instanceof Error ? error.message : error);
+      process.exit(1);
+    }
+    try {
+      egressPolicy = egressPolicyOverride(requestedCapabilities);
+    } catch (error) {
+      printStartupError(startupErrorMessage(error), !!opts.quiet);
       process.exit(1);
     }
     const isStreamHelper = process.env[STREAM_HELPER_ENV] === "1";
@@ -2801,8 +2818,8 @@ Examples:
         ...(bundleId ? ["--launch-app-identifier"] : []),
         ...(launchArgs.length > 0 ? ["--launch-arg"] : []),
         ...(openUrl ? ["--open-url"] : []),
-        ...(capabilities.enable.length > 0 ? ["--enable"] : []),
-        ...(capabilities.disable.length > 0 ? ["--disable"] : []),
+        ...(requestedCapabilities.enable.length > 0 ? ["--enable"] : []),
+        ...(requestedCapabilities.disable.length > 0 ? ["--disable"] : []),
       ];
       if (unsupported.length > 0) {
         console.error(
@@ -2902,8 +2919,24 @@ Examples:
             });
           }
         }
+        if (egressPolicy !== undefined) {
+          if (
+            targets.length !== 1 ||
+            !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(targets[0]!)
+          )
+            throw new Error("Resident egress requires one exact Simulator UDID");
+          targets = targets.map((udid) => udid.toUpperCase());
+        }
+        // @ref LLP 0011#resident-egress-startup — explicit egress cannot use best-effort capability preparation
         for (const udid of targets) {
-          await ensureBooted(udid);
+          const handled = isStreamHelper
+            ? await checkEgressStreamHelper(udid)
+            : await requiredEgressStartup(udid, egressPolicy, async () => {
+                if (sessionStopping) throw new Error("Session is stopping");
+                await ensureBooted(udid);
+                if (sessionStopping) throw new Error("Session is stopping");
+              });
+          if (!handled) await ensureBooted(udid);
           if (sessionStopping) return;
         }
         if (!isStreamHelper) {
@@ -3368,6 +3401,7 @@ program
   .argument("[args...]")
   .action((args: string[]) => uiSettings(args));
 
+registerCapability(egressGuardCapability);
 registerCapability(clipboardCapability);
 registerCapability(captureRuntime.capability);
 

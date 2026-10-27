@@ -6,7 +6,9 @@ host tests. [LLP 0007.001](../../../../../../llp/0007.001-runtime-egress-local.p
 describes the capability-loader and startup/adoption integration.
 
 Build recipes and package entries are present; these native integration changes
-have not been built. The guard is not yet registered or enabled by serve-sim.
+have not been built. The guard is registered and initial CLI choices are parsed,
+but explicit egress startup rejects before boot, app actions or ready output while
+enforcement validation is unavailable. There is no bypass flag.
 The initial performance gate failed, and all-process coverage, draining and
 Simulator validation remain open. Boot, `--adopt`, capture, recording and the
 existing EAS cold fallback keep their current behavior.
