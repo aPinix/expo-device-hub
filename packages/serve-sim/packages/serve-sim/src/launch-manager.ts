@@ -399,13 +399,7 @@ function retainResidentEnrollment(udid: string): boolean {
     commitCapabilityConfig(udid, renderCapabilityConfig(state!));
     return true;
   }
-  if (
-    managedStartupDylibs(udid).some((path) => basename(path) === "libServeSimEgressGuard.dylib")
-  ) {
-    throw new Error(
-      `Resident egress state on ${udid} is unavailable; retain its startup config until boot death is confirmed.`,
-    );
-  }
+  assertResidentConfigRetained(udid, "");
   return false;
 }
 
