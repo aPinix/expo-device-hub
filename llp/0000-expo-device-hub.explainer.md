@@ -95,6 +95,20 @@ animation path.
 [observed: `src/client/client.tsx` and `src/client/hooks/use-mobile-simulator-size.ts`
 in ServeSim; confirmed: Gabe Debes, 2026-10-23, requested mobile layout]
 
+### Mobile Hub layout
+
+Hub uses its own shared components, not the serve-sim viewer. Below 640px and
+on short touch landscape viewports, the dashboard and viewer share visual viewport
+bounds, including keyboard height and viewport panning. Mobile hides the title,
+keeps sidebars reachable, and fits the device above a normal-flow action bar.
+Mobile fitting does not wait for an observer to measure that bar.
+While typing, bottom controls hide. The mobile viewer provides a keyboard toggle
+when the client supports HID text events and an in-page full-screen toggle.
+Full-screen controls preserve capture focus. Tablet and desktop layouts retain
+their existing title, padding, and controls. [observed: Hub `Dashboard.tsx`,
+HubComponents `StreamPanel.tsx`, HubClient `useMobileViewport.ts`]
+[confirmed: Gabe Debes, 2026-10-26, requested equivalent mobile behavior in Hub]
+
 ### DeviceKit hardware artwork
 
 Hardware-button sprites follow the alignment in Apple's DeviceKit profile.

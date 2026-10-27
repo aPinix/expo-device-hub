@@ -57,7 +57,7 @@ export function Sidebar({
         gap: 32,
         width: `min(${width}px, 100vw)`,
         flexShrink: 0,
-        height: "100vh",
+        height: "var(--hub-viewport-height, 100vh)",
         boxSizing: "border-box",
         padding: "32px 24px",
         backgroundColor: bg.default,

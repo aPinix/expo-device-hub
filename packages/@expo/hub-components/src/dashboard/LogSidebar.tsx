@@ -86,7 +86,7 @@ export function LogSidebar({
         flexDirection: "column",
         width: `min(${width}px, 100vw)`,
         flexShrink: 0,
-        height: "100vh",
+        height: "var(--hub-viewport-height, 100vh)",
         boxSizing: "border-box",
         padding: "32px 0 0",
         backgroundColor: bg.default,

@@ -6,6 +6,7 @@ import {
   DeviceScreen,
   displayScreen,
   useActiveDeviceClient,
+  useMobileViewport,
   type DeviceHttpCodec,
   type DeviceStreamMode,
 } from "@expo/hub-client";
@@ -118,6 +119,7 @@ function clampSidebarWidth(width: number, otherWidth: number): number {
  */
 export default function Dashboard(_props: { dom?: import("expo/dom").DOMProps }) {
   const scheme = useColorScheme();
+  const viewport = useMobileViewport();
   const hideBootDevice = dashboardHideBootDevice();
   const platform = dashboardPlatformFilter();
   const { booted, recent, connectionStatus } = useDeviceLists();
@@ -320,7 +322,16 @@ export default function Dashboard(_props: { dom?: import("expo/dom").DOMProps })
         flex: 1,
         width: "100%",
         minWidth: 0,
-        height: "100vh",
+        height: viewport.mobile ? viewport.height : "100vh",
+        ...(viewport.mobile
+          ? ({
+              position: "fixed",
+              top: viewport.top,
+              left: viewport.left,
+              width: viewport.width,
+              "--hub-viewport-height": `${viewport.height}px`,
+            } as const)
+          : {}),
         boxSizing: "border-box",
         backgroundColor: bg.default,
         color: text.default,
