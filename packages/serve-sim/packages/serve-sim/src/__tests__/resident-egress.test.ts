@@ -7,7 +7,13 @@ import {
   writeManagedStartupDylibs,
 } from "../capability-config";
 import { readLaunchState, writeLaunchState, type RecordedCapability } from "../launch-state";
-import { disableCapability, enableCapabilities, releaseLaunchState } from "../launch-manager";
+import {
+  disableCapability,
+  enableCapabilities,
+  releaseLaunchState,
+  removeCapabilityLoader,
+  removeCapabilityLoaderSync,
+} from "../launch-manager";
 import { useTempStateDir, withShimsAsync } from "./helpers";
 
 let state: ReturnType<typeof useTempStateDir>;
@@ -163,3 +169,23 @@ test("generic first enrollment refuses late insertion before changing an ordinar
   expect(existsSync(join(state.dir, `launch-${udid}.json`))).toBe(false);
   expect(existsSync(nativeLog)).toBe(false);
 });
+
+for (const sync of [false, true]) {
+  test(`config-only resident evidence prevents ${sync ? "sync" : "async"} loader removal`, async () => {
+    const guard = enrollment();
+    const original = formatCapabilityConfig({ egressGuard: guard });
+    writeFileSync(capabilityConfigPath(udid), original);
+    const nativeLog = join(state.dir, "native-calls");
+    await withShimsAsync(
+      {
+        xcrun: `#!/bin/sh\necho called >> '${nativeLog}'\nif [ "$5" = "getenv" ]; then echo '/loader/libServeSimCapabilityLoader.dylib:${guard.dylib}'; fi\n`,
+      },
+      async () => {
+        if (sync) expect(() => removeCapabilityLoaderSync(udid)).toThrow("resident");
+        else await expect(removeCapabilityLoader(udid)).rejects.toThrow("resident");
+      },
+    );
+    expect(readFileSync(capabilityConfigPath(udid), "utf8")).toBe(original);
+    expect(existsSync(nativeLog)).toBe(false);
+  });
+}
