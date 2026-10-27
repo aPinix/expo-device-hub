@@ -13,6 +13,7 @@ import {
   releaseLaunchState,
   removeCapabilityLoader,
   removeCapabilityLoaderSync,
+  disarmStaleCapabilityLoader,
 } from "../launch-manager";
 import { useTempStateDir, withShimsAsync } from "./helpers";
 
@@ -34,6 +35,39 @@ beforeEach(() => {
   state = useTempStateDir();
 });
 afterEach(() => state.restore());
+
+test("a missing resident loader rejects stale cleanup without changing enrollment", async () => {
+  const guard = enrollment();
+  writeLaunchState(udid, { launchArgs: [], capabilities: { egressGuard: guard } });
+  const config = capabilityConfigPath(udid);
+  writeFileSync(config, formatCapabilityConfig({ egressGuard: guard }));
+  const missing = join(state.dir, "libServeSimCapabilityLoader.dylib");
+  writeManagedStartupDylibs(udid, [guard.dylib]);
+  const originalFiles = Object.fromEntries(
+    (await import("node:fs"))
+      .readdirSync(state.dir)
+      .map((name) => [name, readFileSync(join(state.dir, name))]),
+  );
+  const calls = join(state.dir, "calls");
+  await withShimsAsync(
+    {
+      xcrun: `#!/usr/bin/env node
+const fs=require('fs'),args=process.argv.slice(2);
+fs.appendFileSync(${JSON.stringify(calls)},JSON.stringify(args)+'\\n');
+if(args.includes('getenv')) console.log(${JSON.stringify(`${missing}:${guard.dylib}:/foreign/image.dylib`)});
+else process.exit(99);
+`,
+    },
+    async () => {
+      await expect(disarmStaleCapabilityLoader(udid)).rejects.toThrow(
+        "missing resident capability loader",
+      );
+    },
+  );
+  expect(readFileSync(calls, "utf8")).not.toMatch(/setenv|unsetenv/);
+  for (const [name, bytes] of Object.entries(originalFiles))
+    expect(readFileSync(join(state.dir, name))).toEqual(bytes);
+});
 
 test("all-process records are startup-only and cannot defer initialization", () => {
   const guard = enrollment();

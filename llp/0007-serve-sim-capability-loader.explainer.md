@@ -257,3 +257,10 @@ These source changes do not establish all-process enforcement or a drained
 transition; required admission checks are described in
 [LLP 0007.001](0007.001-runtime-egress-local.plan.md)
 [observed: launch-state and launch-manager source; native validation pending].
+
+If an inserted resident loader has disappeared, stale-loader cleanup rejects
+under the device lock without changing enrollment, startup config or inserts.
+Removing only the missing loader would leave later guard processes without their
+startup callback. This rejection does not repair or validate that boot; assets
+remain until its death is confirmed [observed: `disarmStaleCapabilityLoader` and
+its missing-loader regression fixture].
