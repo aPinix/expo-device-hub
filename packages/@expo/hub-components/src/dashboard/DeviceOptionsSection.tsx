@@ -1,11 +1,6 @@
 import { useId, useState } from "react";
 
-import {
-  areRecordingControlsLocked,
-  type DeviceClient,
-  type DeviceOrientation,
-  type DeviceSettingKey,
-} from "@expo/hub-client";
+import { type DeviceClient, type DeviceOrientation, type DeviceSettingKey } from "@expo/hub-client";
 import { Select, type SelectOption } from "../primitives";
 import { CollapsibleSection } from "./CollapsibleSection";
 import { KeyboardSection } from "./KeyboardSection";
@@ -82,13 +77,6 @@ const ORIENTATION_OPTIONS: ReadonlyArray<SelectOption<DeviceOrientation>> = [
   { value: "portrait_upside_down", label: "Upside down" },
 ];
 
-// Android streams report no orientation, and serve-emu can only turn the
-// emulator to `landscape_left`, so a landscape frame shows as that.
-function currentOrientation(screen: DeviceClient["screen"]): DeviceOrientation {
-  if (!screen) return "portrait";
-  return screen.orientation ?? (screen.width > screen.height ? "landscape_left" : "portrait");
-}
-
 const SWITCH_OPTIONS: ReadonlyArray<{ key: DeviceSettingKey; label: string }> = [
   { key: "reduce-motion", label: "Reduce motion" },
   { key: "bold-text", label: "Bold text" },
@@ -136,7 +124,7 @@ export function DeviceOptionsSection({
   onRemove?: () => void;
 }) {
   const [open, setOpen] = useState(true);
-  const recordingControlsLocked = areRecordingControlsLocked(client?.screenRecording ?? null);
+  const recordingControlsLocked = client?.recordingControlsLocked ?? false;
   const recordingDisabledReason = !recordingControlsLocked
     ? undefined
     : client?.screenRecording === "unknown"
@@ -184,9 +172,14 @@ export function DeviceOptionsSection({
   }
 
   const keyboardVisible = showDeviceSettings && client?.platform === "ios";
-  const orientationOptions = ORIENTATION_OPTIONS.filter(({ value }) =>
-    client?.orientations.includes(value),
-  );
+  const orientationCapabilities = client?.capabilities.orientation;
+  const orientationOptions = orientationCapabilities
+    ? ORIENTATION_OPTIONS.filter(({ value }) =>
+        orientationCapabilities.orientations.includes(value),
+      )
+    : [];
+  // Shown once the device reports how it faces; Rotate still works before that.
+  const currentOrientation = client?.screen?.orientation;
 
   return (
     <CollapsibleSection title="Device options" open={open} onOpenChange={setOpen}>
@@ -267,12 +260,12 @@ export function DeviceOptionsSection({
         </SidebarRow>
       )}
 
-      {client && orientationOptions.length > 0 && (
+      {client && orientationOptions.length > 0 && currentOrientation && (
         <SidebarRow label="Orientation">
           <Select
             ariaLabel="Orientation"
             options={orientationOptions}
-            value={currentOrientation(client.screen)}
+            value={currentOrientation}
             disabled={recordingControlsLocked || client.status !== "streaming"}
             disabledReason={recordingDisabledReason}
             onChange={client.setOrientation}

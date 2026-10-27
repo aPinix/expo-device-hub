@@ -1,7 +1,6 @@
 import { type ReactNode } from "react";
 
 import {
-  areRecordingControlsLocked,
   type DeviceClipboardAction,
   type DeviceClipboardCapabilities,
   type DeviceScreenRecordingStatus,
@@ -75,6 +74,7 @@ export function StreamControls({
   onRotate,
   onSave,
   recording = null,
+  recordingControlsLocked: recordingLocked = false,
   clipboard = false,
   clipboardPending = null,
   onPaste,
@@ -95,6 +95,8 @@ export function StreamControls({
   /** Save a screenshot of the device (triggers a file download). */
   onSave?: () => void;
   recording?: DeviceScreenRecordingStatus | null;
+  /** The client's `recordingControlsLocked`; `recording` only picks the explanation. */
+  recordingControlsLocked?: boolean;
   /** The clipboard actions the device offers. Each one shows only when the device has it. */
   clipboard?: DeviceClipboardCapabilities;
   /** Disable both clipboard actions while either is in flight. */
@@ -104,7 +106,6 @@ export function StreamControls({
   /** Copy the text selected in the device app to the browser clipboard. */
   onCopy?: () => void;
 }) {
-  const recordingControlsLocked = areRecordingControlsLocked(recording);
   const themeDisabled = appearanceDisabled || appearance === null;
   const clipboardDisabled = clipboardPending !== null;
   return (
@@ -189,15 +190,13 @@ export function StreamControls({
           tooltip={
             recording === "unknown"
               ? "Rotation is unavailable until recording status is known."
-              : recordingControlsLocked
+              : recordingLocked
                 ? "Rotation is unavailable while recording."
                 : undefined
           }
-          aria-disabled={recordingControlsLocked || undefined}
-          onClick={recordingControlsLocked ? undefined : onRotate}
-          style={
-            recordingControlsLocked ? { color: text.tertiary, cursor: "not-allowed" } : undefined
-          }
+          aria-disabled={recordingLocked || undefined}
+          onClick={recordingLocked ? undefined : onRotate}
+          style={recordingLocked ? { color: text.tertiary, cursor: "not-allowed" } : undefined}
         />
       </ControlGroup>
     </div>
