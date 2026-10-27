@@ -27,7 +27,10 @@ export function validatedAdditionalDylibs(): string[] {
 // @ref LLP 0011#additional-boot-dylibs — simctl passes child variables into the simulator at boot.
 export function simulatorBootEnv(udid: string, booting = false): NodeJS.ProcessEnv {
   const additional = validatedAdditionalDylibs();
-  const resident = readLaunchState(udid)?.capabilities.egressGuard;
+  const canonical = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(udid)
+    ? udid.toUpperCase()
+    : udid;
+  const resident = readLaunchState(canonical)?.capabilities.egressGuard;
   if (booting && resident?.resident?.boot) {
     throw new Error(
       "A new Simulator boot requires fresh resident egress enrollment; the previous page cannot be reused.",
@@ -40,12 +43,14 @@ export function simulatorBootEnv(udid: string, booting = false): NodeJS.ProcessE
     SIMCTL_CHILD_DYLD_INSERT_LIBRARIES: [
       ...new Set([
         ...(process.env.SIMCTL_CHILD_DYLD_INSERT_LIBRARIES ?? "").split(":").filter(Boolean),
-        capabilityLoaderPath(udid),
+        capabilityLoaderPath(resident?.resident ? canonical : udid),
         ...(resident?.resident ? [resident.dylib] : []),
         ...(existsSync(capture) ? [capture] : []),
         ...additional,
       ]),
     ].join(":"),
-    SIMCTL_CHILD_SERVE_SIM_CAPABILITIES_CONFIG: capabilityConfigPath(udid),
+    SIMCTL_CHILD_SERVE_SIM_CAPABILITIES_CONFIG: capabilityConfigPath(
+      resident?.resident ? canonical : udid,
+    ),
   };
 }

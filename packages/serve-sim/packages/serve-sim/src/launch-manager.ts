@@ -379,7 +379,7 @@ export async function rearmCapabilityLoader(udid: string): Promise<void> {
 
 /** Best-effort rearmCapabilityLoader for startup: a missing loader is skipped, a failure logged. */
 export async function armCapabilityLoader(udid: string): Promise<void> {
-  if (!existsSync(capabilityLoaderPath())) return;
+  if (!existsSync(capabilityLoaderPath(udid))) return;
   try {
     await rearmCapabilityLoader(udid);
   } catch (error) {
@@ -983,7 +983,7 @@ export async function isCapabilityArmed(
   const needsStartupInsert =
     capability.loadPhase === "startup" || capability.loadPhase === "startupAndDeferred";
   return (
-    inserts.includes(capabilityLoaderPath()) &&
+    inserts.includes(capabilityLoaderPath(udid)) &&
     (!needsStartupInsert || inserts.includes(capability.dylib))
   );
 }

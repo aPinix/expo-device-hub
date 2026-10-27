@@ -107,7 +107,12 @@ export function simctlSync(args: string[], timeoutOrOptions: number | SimctlOpti
       stdio: ["ignore", "pipe", "pipe"],
       timeout: options.timeout,
       maxBuffer: options.maxBuffer,
-      env: { ...process.env, ...options.env },
+      env: {
+        ...(args[0] === "boot" || args[0] === "bootstatus"
+          ? simulatorBootEnv(args[1]!, args[0] === "boot")
+          : process.env),
+        ...options.env,
+      },
     });
     return commandOutput(args, stdout);
   } catch (error) {

@@ -1,6 +1,7 @@
 import { execSync } from "child_process";
 
 import { simctl } from "./simctl";
+import { checkEgressStreamHelper } from "./egress";
 
 const SHUTDOWN_TIMEOUT_MS = 60_000;
 export const BOOT_TIMEOUT_MS = 120_000;
@@ -102,6 +103,6 @@ export async function shutdownDevice(udid: string): Promise<void> {
 }
 
 export async function bootDevice(udid: string): Promise<void> {
-  await simctl(["boot", udid], BOOT_TIMEOUT_MS);
+  if (!(await checkEgressStreamHelper(udid))) await simctl(["boot", udid], BOOT_TIMEOUT_MS);
   await simctl(["bootstatus", udid, "-b"], BOOT_TIMEOUT_MS);
 }

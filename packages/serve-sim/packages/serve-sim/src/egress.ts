@@ -66,6 +66,7 @@ export async function requiredEgressStartup(
 /** Host stream helpers observe the existing boot; they never own a policy choice. */
 export async function checkEgressStreamHelper(udid: string): Promise<boolean> {
   if (!residentEgress(udid)) return false;
+  udid = udid.toUpperCase();
   await withLaunchStateLock(udid, () => checkResidentEgress(udid));
   return true;
 }

@@ -280,3 +280,11 @@ runtime bypass flag. Source integration, adapter tests, native execution and
 Simulator acceptance are separate stages; see
 [LLP 0007.001](0007.001-runtime-egress-local.plan.md)
 [observed: required startup path and retained validation limits].
+
+Host stream helpers cannot request an egress policy, including through the helper
+environment marker. They may only observe a matching existing boot. Device and
+middleware boot paths verify resident identity before skipping a redundant boot;
+all actual new-boot paths reject reuse of a bound page. Capture/clipboard health
+checks use the same pinned loader path as publication. Policy updates also reject
+another live owner using the existing session/capability records
+[observed: startup, device, middleware and launch-manager source].

@@ -7,6 +7,7 @@ const LOCK_TIMEOUT_MS = 90_000;
 export const LOCK_POLL_MS = STATE_LOCK_POLL_MS;
 
 function lockFile(udid: string): string {
+  if (/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(udid)) udid = udid.toUpperCase();
   return join(stateDir(), `launch-${udid}.lock`);
 }
 

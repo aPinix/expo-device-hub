@@ -9,6 +9,7 @@ import { openSseStream } from "./sse-stream";
 import { parseCaptureProxy } from "./capture/upstream";
 import { execFile, execSync } from "child_process";
 import { simulatorBootEnv, validatedAdditionalDylibs } from "./additional-dylibs";
+import { checkEgressStreamHelper } from "./egress";
 import {
   createReadStream,
   readdirSync,
@@ -890,10 +891,15 @@ export async function startDeviceInProcess(
   sessionToken?: string,
   onBoot?: () => Promise<void>,
 ): Promise<string | null> {
-  // `simctl boot` errors when already booted — ignore and let bootstatus confirm.
-  await new Promise<void>((resolve) =>
-    execFile("xcrun", ["simctl", "boot", udid], { env: simulatorBootEnv(udid) }, () => resolve()),
-  );
+  // Existing resident boots must match their native identity; never restart them with an old page.
+  if (!(await checkEgressStreamHelper(udid))) {
+    // `simctl boot` errors when already booted — ignore and let bootstatus confirm.
+    await new Promise<void>((resolve) =>
+      execFile("xcrun", ["simctl", "boot", udid], { env: simulatorBootEnv(udid, true) }, () =>
+        resolve(),
+      ),
+    );
+  }
   const ready = await new Promise<boolean>((resolve) => {
     execFile(
       "xcrun",

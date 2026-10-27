@@ -11,7 +11,7 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import * as config from "../../capability-config";
-import { readLaunchState } from "../../launch-state";
+import { readLaunchState, writeLaunchState } from "../../launch-state";
 import { releaseLaunchState } from "../../launch-manager";
 import { useTempStateDir } from "../helpers";
 
@@ -149,4 +149,45 @@ test("valid page and native identity cannot hide a missing startup record", asyn
   rmSync(config.capabilityConfigPath(udid));
   await expect(checkResidentEgress(udid)).rejects.toThrow("startup record");
   expect(existsSync(config.capabilityConfigPath(udid))).toBe(false);
+});
+
+test("middleware observes a matching resident boot without issuing another boot", async () => {
+  await prepareResidentEgress(udid, "passthrough");
+  writeFileSync(bootFile, JSON.stringify({ pid: 1234, startedAt: "1720000000:42" }));
+  await bindResidentEgressBoot(udid);
+  const nativeLog = join(state.dir, "middleware-calls");
+  const { withShimsAsync } = await import("../helpers");
+  const { startDeviceInProcess } = await import("../../middleware");
+  await withShimsAsync(
+    {
+      xcrun: `#!/usr/bin/env node
+const fs=require('fs'),args=process.argv.slice(2);fs.appendFileSync(${JSON.stringify(nativeLog)},JSON.stringify(args)+'\\n');
+if(args[1]==='bootstatus') process.exit(42);
+console.log(JSON.stringify({devices:{}}));
+`,
+    },
+    async () => {
+      expect(await startDeviceInProcess(udid, 12345, "/")).toContain(
+        "failed to reach booted state",
+      );
+    },
+  );
+  const calls = readFileSync(nativeLog, "utf8")
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line) as string[]);
+  expect(calls.some((args) => args[1] === "boot")).toBe(false);
+  expect(calls.some((args) => args[1] === "bootstatus")).toBe(true);
+});
+
+test("another live session cannot change resident policy", async () => {
+  await prepareResidentEgress(udid, "passthrough");
+  writeFileSync(bootFile, JSON.stringify({ pid: 1234, startedAt: "1720000000:42" }));
+  await bindResidentEgressBoot(udid);
+  const current = readLaunchState(udid)!;
+  writeLaunchState(udid, { ...current, sessionPids: [process.ppid] });
+  const page = current.capabilities.egressGuard!.env!.SERVE_SIM_EGRESS_POLICY_FILE!;
+  const before = readFileSync(page);
+  await expect(publishResidentEgressPolicy(udid, "block")).rejects.toThrow("another session");
+  expect(readFileSync(page)).toEqual(before);
 });

@@ -71,7 +71,7 @@ function pageIdentity(path: string): string {
     throw new Error("Invalid resident egress control page");
   return `${file.dev}:${file.ino}`;
 }
-export async function simulatorEgressBoot(
+async function simulatorEgressBoot(
   udid: string,
   directory: string,
 ): Promise<SimulatorBootIdentity | null> {
@@ -100,7 +100,23 @@ export function residentEgress(udid: string): RecordedCapability | undefined {
   );
   return state?.capabilities.egressGuard?.resident ? state.capabilities.egressGuard : undefined;
 }
+
+/** Uses existing session/capability owners; boot enrollment itself has no job owner. */
+export function assertEgressSessionOwner(udid: string, ownerPid = process.pid): void {
+  const state = readLaunchState(udid);
+  const owners = [
+    ...(state?.sessionPids ?? []),
+    ...Object.values(state?.capabilities ?? {}).flatMap((capability) =>
+      capability.resident || capability.ownerPid === null ? [] : [capability.ownerPid],
+    ),
+  ];
+  if (owners.some((pid) => pid !== ownerPid))
+    throw new Error(
+      `Resident egress on ${udid} belongs to another session; stop it before changing policy.`,
+    );
+}
 export async function checkResidentEgress(udid: string): Promise<RecordedCapability> {
+  udid = canonicalDevice(udid);
   const guard = residentEgress(udid);
   const saved = guard?.resident;
   if (!guard || !saved?.boot || !saved.assets)
@@ -155,6 +171,7 @@ async function checkAssets(udid: string, guard: RecordedCapability): Promise<voi
 export async function prepareResidentEgress(udid: string, policy: EgressPolicy): Promise<void> {
   udid = canonicalDevice(udid);
   await withLaunchStateLock(udid, async () => {
+    assertEgressSessionOwner(udid);
     if (residentEgress(udid))
       throw new Error(
         "Resident egress is already enrolled; use its policy path instead of replacing it",
@@ -259,6 +276,7 @@ export async function prepareResidentEgress(udid: string, policy: EgressPolicy):
 export async function bindResidentEgressBoot(udid: string): Promise<void> {
   udid = canonicalDevice(udid);
   await withLaunchStateLock(udid, async () => {
+    assertEgressSessionOwner(udid);
     const state = readLaunchState(udid);
     const guard = residentEgress(udid);
     if (!state || !guard?.resident || guard.resident.boot)
@@ -279,6 +297,7 @@ export async function publishResidentEgressPolicy(
 ): Promise<void> {
   udid = canonicalDevice(udid);
   await withLaunchStateLock(udid, async () => {
+    assertEgressSessionOwner(udid);
     const guard = await checkResidentEgress(udid);
     const command = join(dirname(guard.dylib), "serve-sim-egress-control");
     try {

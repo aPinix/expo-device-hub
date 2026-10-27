@@ -449,7 +449,7 @@ function bootDevice(udid: string): void {
       execFileSync("xcrun", ["simctl", "boot", udid], {
         encoding: "utf-8",
         stdio: "pipe",
-        env: simulatorBootEnv(udid),
+        env: simulatorBootEnv(udid, true),
       });
     } catch (err: any) {
       const msg = (err.stderr ?? err.message ?? "").toLowerCase();
@@ -2761,6 +2761,13 @@ Examples:
       process.exit(1);
     }
     const isStreamHelper = process.env[STREAM_HELPER_ENV] === "1";
+    if (isStreamHelper && egressPolicy !== undefined) {
+      printStartupError(
+        "Stream helpers cannot request egress policy; use the owning startup or adoption command.",
+        !!opts.quiet,
+      );
+      process.exit(1);
+    }
 
     const startPort: number | undefined = opts.port;
     const streamOptionsProvided =

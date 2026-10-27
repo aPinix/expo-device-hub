@@ -13,6 +13,7 @@ import {
   releaseLaunchState,
   removeCapabilityLoader,
   removeCapabilityLoaderSync,
+  isCapabilityArmed,
 } from "../launch-manager";
 import { useTempStateDir, withShimsAsync } from "./helpers";
 
@@ -189,3 +190,62 @@ for (const sync of [false, true]) {
     expect(existsSync(nativeLog)).toBe(false);
   });
 }
+
+test("capability health accepts the boot's pinned resident loader", async () => {
+  const guard = enrollment();
+  const capture: RecordedCapability = {
+    name: "networkCapture",
+    scope: "userApps",
+    loadPhase: "startup",
+    dylib: "/capture.dylib",
+    ownerPid: process.pid,
+    bundleId: null,
+  };
+  writeLaunchState(udid, {
+    launchArgs: [],
+    capabilities: { egressGuard: guard, networkCapture: capture },
+  });
+  writeFileSync(
+    capabilityConfigPath(udid),
+    formatCapabilityConfig({ egressGuard: guard, networkCapture: capture }),
+  );
+  const insert = [
+    join(state.dir, "libServeSimCapabilityLoader.dylib"),
+    guard.dylib,
+    capture.dylib,
+  ].join(":");
+  expect(
+    await isCapabilityArmed(udid, "networkCapture", {}, async (args) =>
+      args.at(-1) === "DYLD_INSERT_LIBRARIES" ? insert : capabilityConfigPath(udid),
+    ),
+  ).toBe(true);
+});
+
+test("middleware cannot boot using a previous resident enrollment", async () => {
+  const guard = enrollment();
+  writeLaunchState(udid, { launchArgs: [], capabilities: { egressGuard: guard } });
+  writeFileSync(capabilityConfigPath(udid), formatCapabilityConfig({ egressGuard: guard }));
+  const nativeLog = join(state.dir, "native-calls");
+  const { startDeviceInProcess } = await import("../middleware");
+  await withShimsAsync(
+    { xcrun: `#!/bin/sh\necho called >> '${nativeLog}'\nexit 42\n` },
+    async () => {
+      await expect(startDeviceInProcess(udid, 12345, "/")).rejects.toThrow(
+        "resident egress enrollment",
+      );
+    },
+  );
+  expect(existsSync(nativeLog)).toBe(false);
+  expect(readFileSync(capabilityConfigPath(udid), "utf8")).toContain(
+    guard.env!.SERVE_SIM_EGRESS_POLICY_FILE!,
+  );
+});
+
+test("a lowercase UDID cannot bypass old-boot enrollment protection", async () => {
+  const device = "ABCDEF12-1234-4ABC-8123-ABCDEF123456";
+  writeLaunchState(device, { launchArgs: [], capabilities: { egressGuard: enrollment() } });
+  const { simulatorBootEnv } = await import("../additional-dylibs");
+  expect(() => simulatorBootEnv(device.toLowerCase(), true)).toThrow(
+    "previous page cannot be reused",
+  );
+});
