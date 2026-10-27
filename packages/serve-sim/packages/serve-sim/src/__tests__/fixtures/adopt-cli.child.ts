@@ -335,3 +335,14 @@ test.each([
     expect(bodies).toHaveLength(0);
   });
 });
+
+test("egress flags use resident compatibility preflight without consuming an ordinary orphan", async () => {
+  await fixture(async ({ cli, bodies }) => {
+    const result = await cli(["--enable", "egressGuard"]);
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout + result.stderr).toContain("resident egress enrollment");
+    expect(bodies).toHaveLength(0);
+    expect((await cli()).exitCode).toBe(0);
+    expect(bodies).toHaveLength(1);
+  });
+});

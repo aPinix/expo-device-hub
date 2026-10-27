@@ -2,10 +2,12 @@ import type { CapabilityDefinition, CapabilityOverrides } from "./capabilities";
 import { withLaunchStateLock } from "./launch-state-lock";
 import type { SimulatorBootIdentity } from "./launch-state";
 import {
+  assertEgressSessionOwner,
   bindResidentEgressBoot,
   checkResidentEgress,
   prepareResidentEgress,
   publishResidentEgressPolicy,
+  publishResidentEgressPolicyUnlocked,
   residentEgress,
   type EgressPolicy,
 } from "./egress-resources";
@@ -81,4 +83,56 @@ export async function checkEgressStreamHelper(
       throw new Error("Simulator boot changed during helper startup");
     return { ...boot };
   });
+}
+
+async function compatibleEgressAdoption(
+  udid: string,
+  requested: unknown,
+  ownerPid: number,
+): Promise<EgressPolicy | undefined> {
+  if (requested !== undefined && requested !== "block" && requested !== "passthrough")
+    throw new Error("Invalid resident egress policy");
+  const existing = residentEgress(udid);
+  if (requested === undefined && !existing) return undefined;
+  if (!existing) throw new Error("No compatible resident egress enrollment; use a cold start");
+  if (requested === undefined)
+    throw new Error(
+      "Resident adoption requires an explicit --enable egressGuard or --disable egressGuard choice",
+    );
+  assertEgressSessionOwner(udid, ownerPid);
+  await checkResidentEgress(udid);
+  return requested;
+}
+
+/** Compatibility only: no policy mutation and no enforcement/drain acknowledgement. */
+export async function preflightEgressAdoption(
+  udid: string,
+  requested: unknown,
+  ownerPid: number,
+): Promise<void> {
+  udid = udid.toUpperCase();
+  await withLaunchStateLock(udid, () => compatibleEgressAdoption(udid, requested, ownerPid));
+}
+
+export async function requiredEgressAdoption(
+  udid: string,
+  policy: EgressPolicy | undefined,
+  signal: AbortSignal,
+): Promise<void> {
+  udid = udid.toUpperCase();
+  try {
+    await withLaunchStateLock(udid, async () => {
+      signal.throwIfAborted();
+      const requested = await compatibleEgressAdoption(udid, policy, process.pid);
+      signal.throwIfAborted();
+      if (requested === undefined) return;
+      requireEnforcement();
+      await publishResidentEgressPolicyUnlocked(udid, requested);
+      signal.throwIfAborted();
+    });
+  } catch (error) {
+    // The private owner keeps its generic response; retain policy and cleanup causes for the operator.
+    if (policy !== undefined) console.error("[serve-sim] egress adoption failed", error);
+    throw error;
+  }
 }

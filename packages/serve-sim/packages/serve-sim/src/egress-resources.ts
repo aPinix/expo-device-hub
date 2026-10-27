@@ -296,46 +296,52 @@ export async function publishResidentEgressPolicy(
   policy: EgressPolicy,
 ): Promise<void> {
   udid = canonicalDevice(udid);
-  await withLaunchStateLock(udid, async () => {
-    assertEgressSessionOwner(udid);
-    const guard = await checkResidentEgress(udid);
-    const command = join(dirname(guard.dylib), "serve-sim-egress-control");
+  await withLaunchStateLock(udid, () => publishResidentEgressPolicyUnlocked(udid, policy));
+}
+
+/** Requires the existing device lock. This result still means publication only. */
+export async function publishResidentEgressPolicyUnlocked(
+  udid: string,
+  policy: EgressPolicy,
+): Promise<void> {
+  assertEgressSessionOwner(udid);
+  const guard = await checkResidentEgress(udid);
+  const command = join(dirname(guard.dylib), "serve-sim-egress-control");
+  try {
+    const result = (await helper(command, [
+      "set",
+      guard.env!.SERVE_SIM_EGRESS_POLICY_FILE!,
+      policy,
+    ])) as { policy?: unknown; publishedGeneration?: unknown; drained?: unknown };
+    if (
+      result.policy !== policy ||
+      !Number.isSafeInteger(result.publishedGeneration) ||
+      Number(result.publishedGeneration) < 1 ||
+      result.drained !== false
+    )
+      throw new Error("Egress policy publication failed");
+    await checkResidentEgress(udid);
+  } catch (error) {
     try {
-      const result = (await helper(command, [
+      await checkResidentEgress(udid);
+      const blocked = (await helper(command, [
         "set",
         guard.env!.SERVE_SIM_EGRESS_POLICY_FILE!,
-        policy,
+        "block",
       ])) as { policy?: unknown; publishedGeneration?: unknown; drained?: unknown };
       if (
-        result.policy !== policy ||
-        !Number.isSafeInteger(result.publishedGeneration) ||
-        Number(result.publishedGeneration) < 1 ||
-        result.drained !== false
+        blocked.policy !== "block" ||
+        !Number.isSafeInteger(blocked.publishedGeneration) ||
+        Number(blocked.publishedGeneration) < 1 ||
+        blocked.drained !== false
       )
-        throw new Error("Egress policy publication failed");
-      await checkResidentEgress(udid);
-    } catch (error) {
-      try {
-        await checkResidentEgress(udid);
-        const blocked = (await helper(command, [
-          "set",
-          guard.env!.SERVE_SIM_EGRESS_POLICY_FILE!,
-          "block",
-        ])) as { policy?: unknown; publishedGeneration?: unknown; drained?: unknown };
-        if (
-          blocked.policy !== "block" ||
-          !Number.isSafeInteger(blocked.publishedGeneration) ||
-          Number(blocked.publishedGeneration) < 1 ||
-          blocked.drained !== false
-        )
-          throw new Error("Blocking cleanup publication failed");
-      } catch (cleanup) {
-        throw new AggregateError(
-          [error, cleanup],
-          "Egress policy update and blocking cleanup failed; preserve the resident mapping",
-        );
-      }
-      throw error;
+        throw new Error("Blocking cleanup publication failed");
+    } catch (cleanup) {
+      throw new AggregateError(
+        [error, cleanup],
+        "Egress policy update and blocking cleanup failed; preserve the resident mapping",
+      );
     }
-  });
+    throw error;
+  }
 }

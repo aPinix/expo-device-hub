@@ -26,6 +26,7 @@ import {
   type ServeSimDeviceState,
 } from "./state";
 import { isLoopbackHost } from "./middleware-utils";
+import { preflightEgressAdoption, requiredEgressAdoption } from "./egress";
 
 const MAX_MESSAGE_BYTES = 64 * 1024;
 // Kept outside HTTP host-action roots, even when TMPDIR or SERVE_SIM_STATE_DIR is overridden.
@@ -174,6 +175,9 @@ export async function startSessionOwner(
           respond({ ok: false, error: "session_already_configured" });
           return;
         }
+        await preflightEgressAdoption(device, request.configuration?.egressPolicy, process.pid);
+        // Preflight may await native identity reads. A competing claim or disconnect must win.
+        if (claimed || closed || socket.destroyed) return;
         // Reserve before parsing or awaiting native setup. Failure requires a new process.
         claimed = true;
         server.close();
@@ -185,6 +189,8 @@ export async function startSessionOwner(
         const cancel = () => cancellation.abort();
         socket.once("close", cancel);
         try {
+          await requiredEgressAdoption(device, configuration.egressPolicy, cancellation.signal);
+          cancellation.signal.throwIfAborted();
           await configure(configuration, cancellation.signal);
           cancellation.signal.throwIfAborted();
           if (!closed)
@@ -350,6 +356,7 @@ export async function adoptSession(
       "Prepared serve-sim identity or startup environment is incompatible; use a cold start",
     );
   }
+  await preflightEgressAdoption(device, configuration.egressPolicy, state.pid);
   const result = await localOwnerRequest(socketPath, secret, {
     method: "configure",
     identity: expected,

@@ -2620,8 +2620,10 @@ Examples:
           "launchAppIdentifier",
           "launchArg",
           "openUrl",
-          "enable",
-          "disable",
+          ...((opts.enable ?? []).some((name: string) => name !== "egressGuard") ? ["enable"] : []),
+          ...((opts.disable ?? []).some((name: string) => name !== "egressGuard")
+            ? ["disable"]
+            : []),
           "debugStream",
           "allowAnyHostWhenInsecure",
         ].filter((name) => program.getOptionValueSource(name) === "cli");
@@ -2906,6 +2908,7 @@ Examples:
           videoRecording: opts.recordingOutput
             ? { output: resolve(opts.recordingOutput), recordingId: opts.recordingId }
             : undefined,
+          egressPolicy,
           networkCapture: !!opts.networkCapture,
           networkCaptureFields: parseCaptureFields(opts.networkCaptureField),
           networkCaptureProxy: opts.networkCaptureProxy,

@@ -300,3 +300,11 @@ readiness wait and preview setup. It rechecks that same identity before writing
 state and before reporting its URL. Failure closes the listener and removes only
 its own session state; cleanup failures retain the original error
 [observed: `src/index.ts`, `src/egress.ts`, `egress-helper-ready` CLI fixture].
+
+Private one-shot adoption accepts only the egress capability's explicit policy
+flags. Compatibility checks run before claiming and again under the device lock
+after the claim. Enforcement admission precedes capture/video setup; its current
+rejection consumes the claim without reporting success. A disconnect during
+compatibility does not claim or publish a policy. These adapter tests establish
+ordering only, not native enforcement or draining
+[observed: `src/session-owner.ts`, `src/egress.ts`, resident-owner fixtures].
