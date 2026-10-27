@@ -5,14 +5,16 @@ This directory contains the native dylib, shared policy page, control helper and
 host tests. [LLP 0007.001](../../../../../../llp/0007.001-runtime-egress-local.plan.md)
 describes the capability-loader and startup/adoption integration.
 
-The native implementation is not yet registered, packaged or enabled by serve-sim.
+Build recipes and package entries are present; these native integration changes
+have not been built. The guard is not yet registered or enabled by serve-sim.
 The initial performance gate failed, and all-process coverage, draining and
 Simulator validation remain open. Boot, `--adopt`, capture, recording and the
 existing EAS cold fallback keep their current behavior.
 
-The guard must be preloaded at process startup. Its immutable boot-env test
-adapter is `SERVE_SIM_EGRESS_POLICY_FILE`, pointing to a private control page
-created before startup. The host control helper requires an explicit
+The guard must be preloaded at process startup. Its startup capability record
+supplies `SERVE_SIM_EGRESS_POLICY_FILE`, pointing to a private control page created
+before startup. Host tests use an explicit compile-time constructor adapter;
+production initialization requires the loader's all-process startup entry point. The host control helper requires an explicit
 `create /absolute/page passthrough|block`; `set` publishes a mode/generation on
 the same inode. There is no warmup default. Missing or invalid state blocks
 covered remote calls. Unix sockets, files and resolved loopback peers continue;

@@ -88,7 +88,7 @@ try:
         raise RuntimeError("Baseline did not prove blocking was enabled")
     check("today's guard blocks fresh connections but fails the old-socket regression")
     for name, extra in [("guard", []), ("guard-test", ["-DSERVE_SIM_EGRESS_TEST_REMOTE_LOOPBACK"])]:
-        run(flags + ["-dynamiclib"] + extra + [source / "egress-guard.c", source / "policy.c", "-o", work / (name + ".dylib")])
+        run(flags + ["-dynamiclib", "-DSERVE_SIM_EGRESS_HOST_TEST"] + extra + [source / "egress-guard.c", source / "policy.c", "-o", work / (name + ".dylib")])
     run(flags + [source / "control.c", source / "policy.c", "-o", work / "control"])
     control = work / "control"
     fixture(page)

@@ -390,7 +390,25 @@ export async function armCapabilityLoader(udid: string): Promise<void> {
   }
 }
 
+// @ref LLP 0007.001#integration-layers — later helpers still need the resident startup record after session release
+function retainResidentEnrollment(udid: string): boolean {
+  const state = readLaunchState(udid);
+  if (Object.values(state?.capabilities ?? {}).some((capability) => capability.resident)) {
+    commitCapabilityConfig(udid, renderCapabilityConfig(state!));
+    return true;
+  }
+  if (
+    managedStartupDylibs(udid).some((path) => basename(path) === "libServeSimEgressGuard.dylib")
+  ) {
+    throw new Error(
+      `Resident egress state on ${udid} is unavailable; retain its startup config until boot death is confirmed.`,
+    );
+  }
+  return false;
+}
+
 export function removeCapabilityLoaderSync(udid: string): void {
+  if (retainResidentEnrollment(udid)) return;
   try {
     simctlSync(["spawn", udid, "launchctl", "unsetenv", CONFIG_VAR], 15_000);
     const current = simctlSync(["spawn", udid, "launchctl", "getenv", INSERT], 15_000);
@@ -455,6 +473,7 @@ export async function disarmStaleCapabilityLoader(udid: string): Promise<boolean
 }
 
 export async function removeCapabilityLoader(udid: string): Promise<void> {
+  if (retainResidentEnrollment(udid)) return;
   await simctl(["spawn", udid, "launchctl", "unsetenv", CONFIG_VAR], 15_000).catch(() => undefined);
   const rest = withoutOurs(await readInsert(udid), managedStartupDylibs(udid)).join(":");
   const clear =
@@ -773,6 +792,11 @@ async function enableCapabilitiesUnlocked(
   }
 
   const previous = readLaunchState(udid);
+  for (const capability of capabilities) {
+    if (previous?.capabilities[capability.name]?.resident) {
+      throw new Error(`Resident ${capability.name} requires a policy update, not re-enrollment.`);
+    }
+  }
   const added = Object.fromEntries(
     capabilities.map((capability) => [capability.name, { ...capability, bundleId, ownerPid }]),
   );
@@ -857,6 +881,11 @@ async function disableCapabilityUnlocked(
   { relaunch = true }: EnableOptions = {},
 ): Promise<void> {
   const previous = readLaunchState(udid);
+  if (previous?.capabilities[name]?.resident) {
+    throw new Error(
+      `Resident ${name} requires a policy update; its startup record must remain enrolled.`,
+    );
+  }
   if (!previous || !(name in previous.capabilities)) {
     if (managedStartupDylibs(udid).length > 0) {
       await withdrawLaunchState(udid, previous ?? { launchArgs: [], capabilities: {} });

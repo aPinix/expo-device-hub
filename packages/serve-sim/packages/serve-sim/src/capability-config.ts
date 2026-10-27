@@ -16,7 +16,11 @@ export function capabilityLoaderPath(): string {
 // Same value as MAX_CONFIG_BYTES in Sources/ServeSimCapabilityLoader/serve-sim-capability-loader.c.
 export const MAX_CONFIG_BYTES = 64 * 1024;
 /** The scope tokens the capability loader matches on. */
-const SCOPE_TOKEN: Record<CapabilityScope, string> = { userApps: "user", allApps: "all" };
+const SCOPE_TOKEN: Record<CapabilityScope, string> = {
+  userApps: "user",
+  allApps: "all",
+  allProcesses: "process",
+};
 
 function assertNoSeparators(what: string, value: string): void {
   const found = [...value].find(
@@ -47,6 +51,9 @@ export function formatCapabilityConfig(capabilities: Record<string, RecordedCapa
       })
       .join(";");
     const phase = capability.loadPhase ?? "deferred";
+    if (capability.scope === "allProcesses" && phase !== "startup") {
+      throw new Error(`All-process capability ${capability.name} is startup-only.`);
+    }
     if (phase !== "startup" && phase !== "deferred" && phase !== "startupAndDeferred") {
       throw new Error(
         `Unknown load phase for ${capability.name}: ${phase}. Use startup, deferred, or startupAndDeferred.`,

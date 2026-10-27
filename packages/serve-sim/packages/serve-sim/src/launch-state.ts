@@ -1,10 +1,16 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "fs";
-import { join } from "path";
+import { isAbsolute, join } from "path";
 import type { CapabilityLoadPhase, CapabilityScope } from "./capabilities";
 import { stateDir } from "./state";
 
 function isCapabilityScope(value: unknown): value is CapabilityScope {
-  return value === "userApps" || value === "allApps";
+  return value === "userApps" || value === "allApps" || value === "allProcesses";
+}
+
+/** The native launchd_sim process, including its microsecond start time. */
+export interface SimulatorBootIdentity {
+  pid: number;
+  startedAt: string;
 }
 
 export interface Capability {
@@ -21,6 +27,12 @@ export interface RecordedCapability extends Capability {
   bundleId: string | null;
   /** Null keeps the capability alive after a one-shot command exits. */
   ownerPid: number | null;
+  /** Boot enrollment survives session release; policy changes do not withdraw it. */
+  resident?: {
+    /** Null only between preboot preparation and binding the new Simulator boot. */
+    boot: SimulatorBootIdentity | null;
+    warmupPolicy: "passthrough" | "block";
+  };
 }
 
 export interface LaunchState {
@@ -78,7 +90,34 @@ function recordedCapabilities(
   const kept: Record<string, RecordedCapability> = {};
   for (const [key, record] of Object.entries(value)) {
     if (typeof record !== "object" || record === null) continue;
-    const { name, dylib, scope, bundleId, ownerPid } = record as Partial<RecordedCapability>;
+    const { name, dylib, scope, bundleId, ownerPid, resident, loadPhase, env } =
+      record as Partial<RecordedCapability>;
+    if (resident !== undefined || scope === "allProcesses") {
+      const boot = resident?.boot;
+      if (
+        key !== "egressGuard" ||
+        name !== key ||
+        scope !== "allProcesses" ||
+        loadPhase !== "startup" ||
+        ownerPid !== null ||
+        !resident ||
+        (resident.warmupPolicy !== "passthrough" && resident.warmupPolicy !== "block") ||
+        (boot !== null &&
+          (!boot ||
+            !Number.isSafeInteger(boot.pid) ||
+            boot.pid <= 1 ||
+            typeof boot.startedAt !== "string" ||
+            !/^\d+:\d{1,6}$/.test(boot.startedAt))) ||
+        typeof dylib !== "string" ||
+        !isAbsolute(dylib) ||
+        !env?.SERVE_SIM_EGRESS_POLICY_FILE ||
+        !isAbsolute(env.SERVE_SIM_EGRESS_POLICY_FILE)
+      ) {
+        throw new Error(
+          "Invalid resident egress enrollment; preserve its files and restart the Simulator before repair.",
+        );
+      }
+    }
     if (typeof name !== "string" || typeof dylib !== "string" || !isCapabilityScope(scope)) {
       continue;
     }
@@ -94,6 +133,14 @@ function recordedCapabilities(
 }
 
 export function clearLaunchState(udid: string): void {
+  const previous = readLaunchState(udid);
+  const resident = Object.fromEntries(
+    Object.entries(previous?.capabilities ?? {}).filter(([, capability]) => capability.resident),
+  );
+  if (Object.keys(resident).length) {
+    writeLaunchState(udid, { launchArgs: [], capabilities: resident });
+    return;
+  }
   try {
     unlinkSync(stateFile(udid));
   } catch {}

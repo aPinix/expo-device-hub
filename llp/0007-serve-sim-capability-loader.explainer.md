@@ -238,3 +238,22 @@ Exclusive capabilities, including network capture, cannot replace another live
 session's registration; local cleanup preserves a foreign registration. Capture
 keeps its public request queue for cancellation while the registry and runtime
 share the same resource callbacks and launch-state lock.
+
+## Resident startup scope
+
+The loader has a separate `serve_sim_startup_all_processes` entry point for
+libSystem-only resident images. It accepts only `startup\tprocess` records and
+runs before app code in processes outside app containers too. Existing startup
+callbacks and deferred loading still accept only their original app scopes.
+The TypeScript config writer rejects `allProcesses` with deferred or hybrid load
+phases [observed: loader C, `startup-capability.h`, `capability-config.ts`].
+
+A resident egress enrollment stays in the existing per-device launch state and
+startup config after ordinary session release. Its mutable policy is separate
+from enrollment: generic capability removal cannot withdraw the record. Later
+helper processes must discover the same page. Older loaders lack the new entry
+point, so a guard using it cannot silently fall back to app-only initialization.
+These source changes do not establish all-process enforcement or a drained
+transition; required admission checks are described in
+[LLP 0007.001](0007.001-runtime-egress-local.plan.md)
+[observed: launch-state and launch-manager source; native validation pending].

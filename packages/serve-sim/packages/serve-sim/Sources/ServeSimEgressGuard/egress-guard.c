@@ -1,6 +1,7 @@
 // Resident guard; startup and warm-adoption integration is pending.
 // @ref LLP 0007.001#covered-operations-and-transition-result — publication does not drain calls that already sampled pass-through
 #include "policy.h"
+#include "../ServeSimCapabilityLoader/startup-capability.h"
 #include "destination.h"
 #include <errno.h>
 #include <mach/mach.h>
@@ -11,14 +12,20 @@
 
 static _Atomic(struct EgressPage *) policy_page;
 
-__attribute__((constructor)) static void eg_initialize(void) {
+static void eg_initialize(void) {
   int saved = errno, fd = -1;
-  // Boot-env test adapter; capability-loader discovery is gated on the benchmarks.
+  // The startup config supplies the immutable path before this callback runs.
   struct EgressPage *page = eg_map_policy(getenv("SERVE_SIM_EGRESS_POLICY_FILE"), 0, &fd);
   if (fd >= 0) close(fd);
   atomic_store_explicit(&policy_page, page, memory_order_release);
   errno = saved;
 }
+
+#ifdef SERVE_SIM_EGRESS_HOST_TEST
+__attribute__((constructor)) static void eg_host_initialize(void) { eg_initialize(); }
+#else
+SERVE_SIM_STARTUP_ALL_PROCESSES(eg_initialize)
+#endif
 
 static int eg_passthrough(void) {
   struct EgressPage *page = atomic_load_explicit(&policy_page, memory_order_acquire);
