@@ -194,6 +194,7 @@ export function StreamPanel({
       }}
       style={{
         flex: 1,
+        position: viewport.mobile ? "relative" : undefined,
         minWidth: 0,
         gap: viewport.mobile ? 8 : undefined,
         display: "flex",
