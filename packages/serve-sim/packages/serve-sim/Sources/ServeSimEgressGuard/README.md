@@ -9,8 +9,10 @@ adapter is `SERVE_SIM_EGRESS_POLICY_FILE`, pointing to a private control page
 created before startup. The host control helper requires an explicit
 `create /absolute/page passthrough|block`; `set` publishes a mode/generation on
 the same inode. There is no warmup default. Missing or invalid state blocks
-covered remote calls; Unix sockets, files and loopback continue. `status` checks
-the page, not whether the guard is loaded in another process.
+covered remote calls. Unix sockets, files and resolved loopback peers continue;
+unresolved Internet stream peers fail closed, even when they will become loopback
+connections. Addressed UDP may use a permitted destination without a peer.
+`status` checks the page, not whether the guard is loaded in another process.
 
 Pass-through is an atomic check followed by the original operation. Block mode
 checks destinations on connect/connectx and sendto/sendmsg, and the peer on
