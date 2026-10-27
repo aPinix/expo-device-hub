@@ -15,7 +15,6 @@
         "scripts/build-trails.ts",
         "src/**/__tests__/**/*.test.{ts,tsx}",
         "src/__tests__/fixtures/*.child.{ts,mjs,cjs}",
-        "scripts/test/middleware-startup.mjs",
         "scripts/tart/__tests__/*.test.ts"
       ]
     }
