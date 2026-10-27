@@ -4,6 +4,8 @@ import {
   capabilityConfigPath,
   capabilityLoaderDir,
   capabilityLoaderPath,
+  assertResidentConfigRetained,
+  renderCapabilityConfig,
 } from "./capability-config";
 import { readLaunchState } from "./launch-state";
 
@@ -24,13 +26,28 @@ export function validatedAdditionalDylibs(): string[] {
   return paths;
 }
 
-// @ref LLP 0011#additional-boot-dylibs — simctl passes child variables into the simulator at boot.
-export function simulatorBootEnv(udid: string, booting = false): NodeJS.ProcessEnv {
-  const additional = validatedAdditionalDylibs();
+function residentBootState(udid: string) {
   const canonical = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(udid)
     ? udid.toUpperCase()
     : udid;
-  const resident = readLaunchState(canonical)?.capabilities.egressGuard;
+  const state = readLaunchState(canonical);
+  assertResidentConfigRetained(
+    canonical,
+    renderCapabilityConfig(state ?? { launchArgs: [], capabilities: {} }),
+  );
+  return { canonical, resident: state?.capabilities.egressGuard };
+}
+
+/** Resident observation cannot start a replacement boot with the previous page. */
+export function simulatorBootStatusArgs(udid: string, residentExpected = false): string[] {
+  const resident = residentBootState(udid).resident?.resident;
+  return ["bootstatus", udid, ...(residentExpected || resident ? [] : ["-b"])];
+}
+
+// @ref LLP 0011#additional-boot-dylibs — simctl passes child variables into the simulator at boot.
+export function simulatorBootEnv(udid: string, booting = false): NodeJS.ProcessEnv {
+  const additional = validatedAdditionalDylibs();
+  const { canonical, resident } = residentBootState(udid);
   if (booting && resident?.resident?.boot) {
     throw new Error(
       "A new Simulator boot requires fresh resident egress enrollment; the previous page cannot be reused.",

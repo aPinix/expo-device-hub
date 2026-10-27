@@ -2,6 +2,7 @@ import { execSync } from "child_process";
 
 import { simctl } from "./simctl";
 import { checkEgressStreamHelper } from "./egress";
+import { simulatorBootStatusArgs } from "./additional-dylibs";
 
 const SHUTDOWN_TIMEOUT_MS = 60_000;
 export const BOOT_TIMEOUT_MS = 120_000;
@@ -103,6 +104,9 @@ export async function shutdownDevice(udid: string): Promise<void> {
 }
 
 export async function bootDevice(udid: string): Promise<void> {
-  if (!(await checkEgressStreamHelper(udid))) await simctl(["boot", udid], BOOT_TIMEOUT_MS);
-  await simctl(["bootstatus", udid, "-b"], BOOT_TIMEOUT_MS);
+  const resident = await checkEgressStreamHelper(udid);
+  if (!resident) await simctl(["boot", udid], BOOT_TIMEOUT_MS);
+  await simctl(simulatorBootStatusArgs(udid, resident), BOOT_TIMEOUT_MS);
+  if (resident && !(await checkEgressStreamHelper(udid)))
+    throw new Error("Resident egress enrollment disappeared during the boot wait");
 }

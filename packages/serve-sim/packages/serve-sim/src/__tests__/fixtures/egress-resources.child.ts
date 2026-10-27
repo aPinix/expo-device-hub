@@ -178,6 +178,9 @@ console.log(JSON.stringify({devices:{}}));
     .map((line) => JSON.parse(line) as string[]);
   expect(calls.some((args) => args[1] === "boot")).toBe(false);
   expect(calls.some((args) => args[1] === "bootstatus")).toBe(true);
+  expect(
+    calls.filter((args) => args[1] === "bootstatus").every((args) => !args.includes("-b")),
+  ).toBe(true);
 });
 
 test("another live session cannot change resident policy", async () => {
@@ -190,4 +193,30 @@ test("another live session cannot change resident policy", async () => {
   const before = readFileSync(page);
   await expect(publishResidentEgressPolicy(udid, "block")).rejects.toThrow("another session");
   expect(readFileSync(page)).toEqual(before);
+});
+
+test("a replacement boot during the wait cannot run callbacks or publish ready", async () => {
+  await prepareResidentEgress(udid, "passthrough");
+  writeFileSync(bootFile, JSON.stringify({ pid: 1234, startedAt: "1720000000:42" }));
+  await bindResidentEgressBoot(udid);
+  const { withShimsAsync } = await import("../helpers");
+  const { startDeviceInProcess } = await import("../../middleware");
+  const { stateFileForDevice } = await import("../../state");
+  let applied = false;
+  await withShimsAsync(
+    {
+      xcrun: `#!/usr/bin/env node
+if(process.argv[3]==='bootstatus') require('fs').writeFileSync(${JSON.stringify(bootFile)},JSON.stringify({pid:1234,startedAt:'1720000001:42'}));
+`,
+    },
+    async () => {
+      await expect(
+        startDeviceInProcess(udid, 12345, "/", undefined, undefined, async () => {
+          applied = true;
+        }),
+      ).rejects.toThrow("boot changed");
+    },
+  );
+  expect(applied).toBe(false);
+  expect(existsSync(stateFileForDevice(udid))).toBe(false);
 });

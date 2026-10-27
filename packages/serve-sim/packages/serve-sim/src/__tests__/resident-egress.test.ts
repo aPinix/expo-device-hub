@@ -249,3 +249,24 @@ test("a lowercase UDID cannot bypass old-boot enrollment protection", async () =
     "previous page cannot be reused",
   );
 });
+
+for (const sync of [false, true]) {
+  test(`boot-capable ${sync ? "sync" : "async"} bootstatus cannot reuse a bound page`, async () => {
+    const guard = enrollment();
+    writeLaunchState(udid, { launchArgs: [], capabilities: { egressGuard: guard } });
+    writeFileSync(capabilityConfigPath(udid), formatCapabilityConfig({ egressGuard: guard }));
+    const log = join(state.dir, "native-calls");
+    const { simctl, simctlSync } = await import("../simctl");
+    await withShimsAsync({ xcrun: `#!/bin/sh\necho called >> '${log}'\n` }, async () => {
+      if (sync)
+        expect(() => simctlSync(["bootstatus", udid, "-b"])).toThrow(
+          "previous page cannot be reused",
+        );
+      else
+        await expect(simctl(["bootstatus", udid, "-b"])).rejects.toThrow(
+          "previous page cannot be reused",
+        );
+    });
+    expect(existsSync(log)).toBe(false);
+  });
+}

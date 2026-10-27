@@ -60,6 +60,14 @@ function optionsFor(
   };
 }
 
+function commandCanBoot(args: string[]): boolean {
+  return (
+    args[0] === "boot" ||
+    (args[0] === "bootstatus" &&
+      args.slice(2).some((arg) => arg === "--boot" || /^-[^-]*b/.test(arg)))
+  );
+}
+
 export async function simctlRaw(
   args: string[],
   timeoutOrOptions: number | SimctlOptions = {},
@@ -71,7 +79,7 @@ export async function simctlRaw(
     maxBuffer: options.maxBuffer,
     env: {
       ...(args[0] === "boot" || args[0] === "bootstatus"
-        ? simulatorBootEnv(args[1]!, args[0] === "boot")
+        ? simulatorBootEnv(args[1]!, commandCanBoot(args))
         : process.env),
       ...options.env,
     },
@@ -109,7 +117,7 @@ export function simctlSync(args: string[], timeoutOrOptions: number | SimctlOpti
       maxBuffer: options.maxBuffer,
       env: {
         ...(args[0] === "boot" || args[0] === "bootstatus"
-          ? simulatorBootEnv(args[1]!, args[0] === "boot")
+          ? simulatorBootEnv(args[1]!, commandCanBoot(args))
           : process.env),
         ...options.env,
       },

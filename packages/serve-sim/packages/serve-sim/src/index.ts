@@ -53,7 +53,11 @@ import { dirnameOf, sleepSync, isPortFree, servePreview } from "./runtime";
 import { isLoopbackHost } from "./middleware-utils";
 import { runRecordingShutdown, runShutdownSteps } from "./shutdown-budget";
 import { launchAppAsync } from "./launch-app";
-import { simulatorBootEnv, validatedAdditionalDylibs } from "./additional-dylibs";
+import {
+  simulatorBootEnv,
+  simulatorBootStatusArgs,
+  validatedAdditionalDylibs,
+} from "./additional-dylibs";
 import {
   assertKnownCapabilities,
   capabilitiesToApply,
@@ -490,7 +494,7 @@ async function ensureBooted(udid: string): Promise<void> {
   try {
     await timeStartup(
       "simulator-bootstatus",
-      () => simctl(["bootstatus", udid, "-b"], BOOT_TIMEOUT_MS),
+      () => simctl(simulatorBootStatusArgs(udid), BOOT_TIMEOUT_MS),
       udid,
     );
   } catch (error) {

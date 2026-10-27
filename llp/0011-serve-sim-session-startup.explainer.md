@@ -288,3 +288,9 @@ all actual new-boot paths reject reuse of a bound page. Capture/clipboard health
 checks use the same pinned loader path as publication. Policy updates also reject
 another live owner using the existing session/capability records
 [observed: startup, device, middleware and launch-manager source].
+
+Resident readiness waits omit bootstatus's boot-if-needed flag. Raw sync and
+async boot-capable waits receive the same old-page protection as explicit boots.
+Observers revalidate the native boot before callbacks and ready publication, so a
+replacement during a wait cannot inherit the earlier check
+[observed: boot-status arguments, simctl wrapper, device and middleware source].

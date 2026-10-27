@@ -8,7 +8,11 @@ import { createReadinessReporter } from "./startup-timing";
 import { openSseStream } from "./sse-stream";
 import { parseCaptureProxy } from "./capture/upstream";
 import { execFile, execSync } from "child_process";
-import { simulatorBootEnv, validatedAdditionalDylibs } from "./additional-dylibs";
+import {
+  simulatorBootEnv,
+  simulatorBootStatusArgs,
+  validatedAdditionalDylibs,
+} from "./additional-dylibs";
 import { checkEgressStreamHelper } from "./egress";
 import {
   createReadStream,
@@ -892,7 +896,8 @@ export async function startDeviceInProcess(
   onBoot?: () => Promise<void>,
 ): Promise<string | null> {
   // Existing resident boots must match their native identity; never restart them with an old page.
-  if (!(await checkEgressStreamHelper(udid))) {
+  const resident = await checkEgressStreamHelper(udid);
+  if (!resident) {
     // `simctl boot` errors when already booted — ignore and let bootstatus confirm.
     await new Promise<void>((resolve) =>
       execFile("xcrun", ["simctl", "boot", udid], { env: simulatorBootEnv(udid, true) }, () =>
@@ -903,7 +908,7 @@ export async function startDeviceInProcess(
   const ready = await new Promise<boolean>((resolve) => {
     execFile(
       "xcrun",
-      ["simctl", "bootstatus", udid, "-b"],
+      ["simctl", ...simulatorBootStatusArgs(udid, resident)],
       { timeout: 180_000, env: simulatorBootEnv(udid) },
       (err) => resolve(!err),
     );
@@ -930,7 +935,11 @@ export async function startDeviceInProcess(
     });
     if (!booted) return `Device ${udid} failed to reach booted state`;
   }
+  if (resident && !(await checkEgressStreamHelper(udid)))
+    throw new Error("Resident egress enrollment disappeared during the boot wait");
   await onBoot?.();
+  if (resident && !(await checkEgressStreamHelper(udid)))
+    throw new Error("Resident egress enrollment disappeared before ready");
   writeServeSimState(gridDeviceState(udid, port, base, streamSettings, sessionToken));
   return null;
 }
