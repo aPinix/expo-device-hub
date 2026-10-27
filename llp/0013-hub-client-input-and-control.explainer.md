@@ -5,6 +5,7 @@
 **Systems:** HubClient, HubComponents, Hub
 **Author:** Gabe Debes
 **Date:** 2026-10-06
+**Revised:** 2026-10-27 (recording lock)
 **Related:** LLP 0000, LLP 0003
 
 ## Summary
@@ -147,6 +148,12 @@ The Hub dashboard reads and writes the browser clipboard for HubClient. Paths in
 Browser clipboard writes from toolbar Copy are serialized. An older write that has already started cannot be cancelled; a newer result waits for it and writes last. A queued write whose action has been superseded is skipped [observed: `copyWrites` in `ClipboardToast.tsx`].
 
 Clipboard fallbacks belong to the selected device and are discarded on a selection change. A new fallback clears an earlier inspector error. A new inspector Copy clears its previous result before reading, including on failure. Key warnings are shown even when React batches an action's start and completion. The toolbar wraps at narrow widths; its measured height reserves space below the stream [observed: `Dashboard.tsx`, `ClipboardSection.tsx`, `ClipboardToast.tsx`, `StreamPanel.tsx`].
+
+## Recording lock
+
+On Android, turning the device or changing the stream restarts serve-emu's encoder, and that ends the host screen recording [inferred: the Hub disabled Rotate and the stream controls while recording before this lock moved into the client]. `DeviceClient.recordingControlsLocked` is true while the recording status is unknown, waiting, recording or finalizing. `rotate`, `setOrientation`, `updateStreamSettings`, `setStreamSource` and the three gRPC setters do nothing meanwhile, so the Hub and the website disable their controls from one value instead of each checking the status [observed: `useAndroidDevice.ts`]. iOS reports no recording and never locks.
+
+The lock is temporary. The team plans to record the screen in a way that survives rotation and stream changes; then this lock can go [confirmed: Krystof Woldrich, 2026-10-27].
 
 ## Hub shutdown
 
