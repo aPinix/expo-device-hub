@@ -1,10 +1,14 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { join } from "node:path";
-import { readFileSync, writeFileSync } from "node:fs";
-import { formatCapabilityConfig, capabilityConfigPath } from "../capability-config";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  formatCapabilityConfig,
+  capabilityConfigPath,
+  writeManagedStartupDylibs,
+} from "../capability-config";
 import { readLaunchState, writeLaunchState, type RecordedCapability } from "../launch-state";
-import { disableCapability, releaseLaunchState } from "../launch-manager";
-import { useTempStateDir } from "./helpers";
+import { disableCapability, enableCapabilities, releaseLaunchState } from "../launch-manager";
+import { useTempStateDir, withShimsAsync } from "./helpers";
 
 let state: ReturnType<typeof useTempStateDir>;
 const udid = "11111111-1111-4111-8111-111111111111";
@@ -97,3 +101,47 @@ test("ordinary config publication preserves the resident record unchanged", () =
   expect(contents).toContain(formatCapabilityConfig({ egressGuard: guard }));
   expect(contents).toContain("user\t/camera.dylib");
 });
+
+for (const broken of ["missing", "malformed", "null-record"]) {
+  test(`ordinary disable preserves resident config when launch metadata is ${broken}`, async () => {
+    const guard = enrollment();
+    const config = formatCapabilityConfig({ egressGuard: guard });
+    writeManagedStartupDylibs(udid, [guard.dylib]);
+    writeFileSync(capabilityConfigPath(udid), config);
+    const launchPath = join(state.dir, `launch-${udid}.json`);
+    if (broken === "missing") rmSync(launchPath, { force: true });
+    else
+      writeFileSync(
+        launchPath,
+        broken === "malformed"
+          ? "{"
+          : JSON.stringify({ launchArgs: [], capabilities: { egressGuard: null } }),
+      );
+    const before = existsSync(launchPath) ? readFileSync(launchPath, "utf8") : null;
+    const nativeLog = join(state.dir, "native-calls");
+    await withShimsAsync(
+      {
+        xcrun: `#!/bin/sh
+echo called >> '${nativeLog}'
+if [ "$5" = "getenv" ] && [ "$6" = "DYLD_INSERT_LIBRARIES" ]; then echo '${guard.dylib}'; fi
+`,
+      },
+      async () => {
+        await expect(disableCapability(udid, null, "camera", { relaunch: false })).rejects.toThrow(
+          "resident",
+        );
+        await expect(
+          enableCapabilities(
+            udid,
+            null,
+            [{ name: "camera", scope: "userApps", dylib: "/camera.dylib" }],
+            { relaunch: false },
+          ),
+        ).rejects.toThrow("resident");
+      },
+    );
+    expect(readFileSync(capabilityConfigPath(udid), "utf8")).toBe(config);
+    expect(existsSync(launchPath) ? readFileSync(launchPath, "utf8") : null).toBe(before);
+    expect(existsSync(nativeLog)).toBe(false);
+  });
+}

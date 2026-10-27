@@ -20,6 +20,7 @@ import {
   writeManagedStartupDylibs,
   commitCapabilityConfig,
   renderCapabilityConfig,
+  assertResidentConfigRetained,
 } from "./capability-config";
 import {
   type Capability,
@@ -299,6 +300,7 @@ async function publishLaunchState(
   snapshot?: CapabilityLaunchSnapshot,
 ): Promise<void> {
   const config = renderCapabilityConfig(state);
+  assertResidentConfigRetained(udid, config);
   const desiredStartupDylibs = startupDylibs(state.capabilities);
   validateStartupDylibs(desiredStartupDylibs);
   const previous = snapshot ?? (await snapshotCapabilityLaunch(udid));
@@ -783,6 +785,11 @@ async function enableCapabilitiesUnlocked(
   armSession = false,
 ): Promise<void> {
   if (capabilities.length === 0 && !armSession) return;
+  const previous = readLaunchState(udid);
+  assertResidentConfigRetained(
+    udid,
+    renderCapabilityConfig(previous ?? { launchArgs: [], capabilities: {} }),
+  );
   const dylib = capabilityLoaderPath();
   if (!existsSync(dylib)) {
     throw new Error(
@@ -791,7 +798,6 @@ async function enableCapabilitiesUnlocked(
     );
   }
 
-  const previous = readLaunchState(udid);
   for (const capability of capabilities) {
     if (previous?.capabilities[capability.name]?.resident) {
       throw new Error(`Resident ${capability.name} requires a policy update, not re-enrollment.`);

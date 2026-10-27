@@ -9,6 +9,7 @@ DYLIB="$OUT_DIR/libServeSimEgressGuard.dylib"
 xcrun --sdk iphonesimulator clang -std=c11 -O2 -Wall -Wextra -Werror \
   -arch arm64 -arch x86_64 -mios-simulator-version-min=15.0 -isysroot "$SDK" \
   -dynamiclib -install_name '@rpath/libServeSimEgressGuard.dylib' \
+  -Wl,-U,_serve_sim_startup_all_processes \
   "$HERE/egress-guard.c" "$HERE/policy.c" -o "$DYLIB"
 # The resident guard, like its loader, may link only libSystem.
 otool -L "$DYLIB" | awk '/^\t/ {print $1}' | while read -r linked; do

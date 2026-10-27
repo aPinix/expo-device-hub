@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "fs";
 import { isAbsolute, join } from "path";
 import type { CapabilityScope } from "./capabilities";
-import type { LaunchState, RecordedCapability } from "./launch-state";
+import { readLaunchState, type LaunchState, type RecordedCapability } from "./launch-state";
 import { stateDir } from "./state";
 import { dirnameOf } from "./runtime";
 
@@ -101,11 +101,41 @@ export function capabilityConfigPath(udid: string): string {
 }
 
 export function commitCapabilityConfig(udid: string, contents: string): void {
+  assertResidentConfigRetained(udid, contents);
   mkdirSync(stateDir(), { recursive: true });
   const target = capabilityConfigPath(udid);
   const temp = `${target}.${process.pid}.tmp`;
   writeFileSync(temp, contents);
   renameSync(temp, target);
+}
+
+// @ref LLP 0007.001#integration-layers — surviving inserts/config are ownership evidence even when launch JSON is lost
+export function assertResidentConfigRetained(udid: string, contents: string): void {
+  const resident = Object.values(readLaunchState(udid)?.capabilities ?? {}).filter(
+    (capability) => capability.resident,
+  );
+  let previous = "";
+  try {
+    previous = readFileSync(capabilityConfigPath(udid), "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  const enrolled =
+    managedStartupDylibs(udid).some((path) => path.endsWith("/libServeSimEgressGuard.dylib")) ||
+    previous.split("\n").some((line) => line.startsWith("startup\tprocess\t"));
+  if (enrolled && resident.length === 0) {
+    throw new Error(
+      `Cannot update resident egress config on ${udid}: launch metadata is unavailable; retain the existing enrollment.`,
+    );
+  }
+  for (const capability of resident) {
+    const expected = formatCapabilityConfig({ [capability.name]: capability }).trimEnd();
+    if (!contents.split("\n").includes(expected)) {
+      throw new Error(
+        `Cannot withdraw resident egress startup config on ${udid}; change policy instead.`,
+      );
+    }
+  }
 }
 
 function startupInsertStatePath(udid: string): string {
