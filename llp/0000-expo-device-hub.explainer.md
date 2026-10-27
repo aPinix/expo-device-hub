@@ -84,7 +84,10 @@ normal and presentation bounds; an interrupted animation restarts from its curre
 visible bounds rather than its old target. The initial fit and reduced motion do
 not animate. Mobile hardware artwork and its screen opening use the current layout
 size in that same render; waiting for a ResizeObserver would leave their pixel
-rectangles at the previous size for a frame during keyboard fitting. Desktop
+rectangles at the previous size for a frame during keyboard fitting. For the
+same reason, the mobile fitted width is measured again in the commit that applies
+a new page height or hides the action row; otherwise the old, taller device
+overflows the keyboard-sized page and jumps up for a frame. Desktop
 keeps observed dimensions for its width transition, and 3D Duo keeps its existing
 animation path.
 [observed: ServeSim `src/client/hooks/use-flip-layout.ts`,

@@ -1719,6 +1719,8 @@ function AppWithConfig({
     mobileActionsRef,
     mobileLayout && !presentation,
     containerAspectRatioValue,
+    containerHeight,
+    phoneKeyboardRaised,
   );
   const mobileFlipLayout = mobileLayout && !useDuoModel;
   const mobileFrameWidth = presentation

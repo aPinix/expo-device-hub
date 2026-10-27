@@ -28,8 +28,8 @@ const actions = { getBoundingClientRect: () => ({ height: actionsHeight }) };
 const pageRef = { current: page as HTMLElement };
 const actionsRef = { current: actions as unknown as HTMLElement };
 let result: number | null = null;
-function Probe({ enabled = true, aspect = 0.5 }) {
-  result = useMobileSimulatorSize(pageRef, actionsRef, enabled, aspect);
+function Probe({ enabled = true, aspect = 0.5, pageHeight = 700, actionsHidden = false }) {
+  result = useMobileSimulatorSize(pageRef, actionsRef, enabled, aspect, pageHeight, actionsHidden);
   return null;
 }
 let renderer: ReactTestRenderer;
@@ -69,6 +69,16 @@ await act(async () => {
   renderer.update(<Probe />);
 });
 assert.equal(result, 283, "measure again when normal controls return");
+page.clientHeight = 350;
+actionsHeight = 0;
+await act(async () => {
+  renderer.update(<Probe pageHeight={350} actionsHidden />);
+});
+assert.equal(
+  result,
+  143,
+  "refit in the commit that applies the keyboard height, not after a later observer callback",
+);
 assert.ok(disconnects >= 2, "disconnect observers on mode changes");
 await act(async () => {
   renderer.unmount();

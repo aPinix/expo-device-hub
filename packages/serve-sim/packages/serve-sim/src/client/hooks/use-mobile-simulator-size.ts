@@ -7,6 +7,11 @@ export function useMobileSimulatorSize(
   actionsRef: RefObject<HTMLElement | null>,
   enabled: boolean,
   aspectRatio: number,
+  // The page height and action-row visibility the caller just rendered.
+  // Measuring again in the same commit keeps the device from overflowing the
+  // keyboard-sized page for a frame while the ResizeObserver catches up.
+  pageHeight: number,
+  actionsHidden: boolean,
 ) {
   const [width, setWidth] = useState<number | null>(null);
   useLayoutEffect(() => {
@@ -36,6 +41,6 @@ export function useMobileSimulatorSize(
     observer.observe(page);
     observer.observe(actions);
     return () => observer.disconnect();
-  }, [pageRef, actionsRef, enabled, aspectRatio]);
+  }, [pageRef, actionsRef, enabled, aspectRatio, pageHeight, actionsHidden]);
   return width;
 }
