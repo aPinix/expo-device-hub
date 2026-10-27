@@ -21,8 +21,12 @@ static int eg_remote(const struct sockaddr *sa, socklen_t size) {
   }
   if (family == AF_INET && size >= sizeof(struct sockaddr_in))
     return !eg_v4_local(ntohl(((const struct sockaddr_in *)sa)->sin_addr.s_addr));
-  if (family == AF_INET6 && size >= sizeof(struct sockaddr_in6)) {
-    const struct in6_addr *a = &((const struct sockaddr_in6 *)sa)->sin6_addr;
+  if (family == AF_INET6) {
+    // @ref LLP 0007.001#native-argument-handling — mapped TCP input can omit scope-id bytes and XNU zero-fills them
+    struct sockaddr_in6 copied = {0};
+    memcpy(&copied, sa, size < sizeof copied ? size : sizeof copied);
+    const struct in6_addr *a = &copied.sin6_addr;
+    if (size < sizeof copied && !IN6_IS_ADDR_V4MAPPED(a)) return 0;
     if (IN6_IS_ADDR_LOOPBACK(a) || IN6_IS_ADDR_UNSPECIFIED(a)) return 0;
     if (IN6_IS_ADDR_V4MAPPED(a)) { uint32_t v4; memcpy(&v4, &a->s6_addr[12], sizeof v4); return !eg_v4_local(ntohl(v4)); }
     return 1;

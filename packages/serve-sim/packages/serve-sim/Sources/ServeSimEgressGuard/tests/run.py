@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import platform
 import random
+import select
 import shutil
 import statistics
 import struct
@@ -106,6 +107,45 @@ try:
     pending_env = dict(env, DYLD_INSERT_LIBRARIES=str(work / "guard-test.dylib") + ":" + str(work / "peer-state.dylib"))
     run([work / "edges", page, "pending"], pending_env)
     check("simulated pending TCP peer cannot bypass addressed send checks; addressed UDP remains permitted")
+    run(flags + [source / "tests/short-address-test.c", "-o", work / "short-addresses"])
+    run([control, "set", page, "block"])
+    run([work / "short-addresses", "denied"], env)
+    loopback_env = dict(env, DYLD_INSERT_LIBRARIES=str(work / "guard.dylib"))
+    run([work / "short-addresses", "loopback"], loopback_env)
+    check("short mapped-IPv6 TCP is classified, permitted loopback works and IPv4 short shapes remain kernel-rejected")
+    run(flags + [source / "tests/controller-test.c", "-o", work / "controller-peer"])
+    run([control, "set", page, "passthrough"])
+    peer = subprocess.Popen([str(work / "controller-peer")], cwd=work, env=env,
+                            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    try:
+        def peer_line():
+            if not select.select([peer.stdout], [], [], 10)[0]:
+                raise RuntimeError("Guarded peer did not answer")
+            line = peer.stdout.readline().strip()
+            log.write("controller peer: " + line + "\n")
+            return line
+
+        assert peer_line() == "ready"
+        previous_generation = None
+        for mode in ["passthrough", "block", "passthrough", "block"]:
+            publication = json.loads(run([control, "set", page, mode]))
+            if previous_generation is not None:
+                assert publication["publishedGeneration"] == previous_generation + 1
+            previous_generation = publication["publishedGeneration"]
+            assert publication["drained"] is False
+            peer.stdin.write(mode + "\n")
+            peer.stdin.flush()
+            assert peer_line() == "ok " + mode
+    finally:
+        peer.stdin.close()
+        try:
+            peer.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            peer.kill()
+            peer.wait()
+        peer.stdout.close()
+    assert peer.returncode == 0
+    check("real controller changes the same live guard's pre-existing TCP/UDP sockets across pass/block/pass/block")
     for name, contents, permissions in [("missing", None, 0o600), ("short", bytes(8), 0o600),
                                         ("magic", bytes(4096), 0o600), ("permissions", initial, 0o644)]:
         invalid = work / (name + ".page")

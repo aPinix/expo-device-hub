@@ -45,6 +45,11 @@ remote in both libraries; benchmarks use unmodified classification. `--skip-benc
 runs behavior checks only. Performance compares no guard, today's guard, resident
 pass-through and resident block in randomized paired rounds.
 
+The controller fixture changes policy through the actual helper while one live
+guard retains its TCP/UDP sockets. This checks that process's observation, not
+all-process observation or draining. A separate short mapped-IPv6 TCP test checks
+zero-filled classification with denied and permitted loopback cases.
+
 Run the runner's cleanup tests without clang or networking:
 
 ```sh
