@@ -38,7 +38,7 @@ static void refused(ssize_t value, int receiver) {
 }
 
 int main(int argc, char **argv) {
-  REQUIRE(argc == 2);
+  REQUIRE(argc == 2 || (argc == 3 && strcmp(argv[2], "pending") == 0));
   int page_fd = open(argv[1], O_RDWR); REQUIRE(page_fd >= 0);
   struct TestPage *page = mmap(NULL, TEST_PAGE_BYTES, PROT_READ | PROT_WRITE, MAP_SHARED, page_fd, 0);
   REQUIRE(page != MAP_FAILED); close(page_fd);
@@ -48,6 +48,11 @@ int main(int argc, char **argv) {
   int tcp = socket(AF_INET, SOCK_STREAM, 0); REQUIRE(tcp >= 0);
   REQUIRE(connect(tcp, (struct sockaddr *)&tcp_address, sizeof tcp_address) == 0);
   int accepted = accept(listener, NULL, NULL); REQUIRE(accepted >= 0);
+  if (argc == 3) {
+    struct sockaddr_storage peer; socklen_t size = sizeof peer;
+    REQUIRE(getpeername(tcp, (struct sockaddr *)&peer, &size) == -1 && errno == ENOTCONN);
+    puts("test-only pending peer observation verified");
+  }
   atomic_store_explicit(&page->policy, (UINT64_C(2) << 2) | 2, memory_order_release);
 
   // The test-only classifier denies 127.0.0.1, while 127.0.0.2 remains permitted.

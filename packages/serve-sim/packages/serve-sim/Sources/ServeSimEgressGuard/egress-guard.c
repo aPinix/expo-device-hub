@@ -49,12 +49,20 @@ static int eg_peer_remote(int fd, int require_peer) {
   socklen_t size = sizeof address;
   int result = getpeername(fd, (struct sockaddr *)&address, &size);
   int remote = result == 0 && eg_remote((const struct sockaddr *)&address, size);
-  if (require_peer && result < 0 && errno != ENOTSOCK && errno != EBADF) {
+  if (result < 0 && errno != ENOTSOCK && errno != EBADF) {
+    if (!require_peer) {
+      int type = 0;
+      socklen_t type_size = sizeof type;
+      // Only addressed datagrams can use their supplied destination without a peer.
+      require_peer = getsockopt(fd, SOL_SOCKET, SO_TYPE, &type, &type_size) != 0 || type != SOCK_DGRAM;
+    }
     // An internet socket with an unresolved/pending peer must not pass through.
     // Otherwise a pending connect could complete between inspection and send.
-    size = sizeof address;
-    remote = getsockname(fd, (struct sockaddr *)&address, &size) != 0 ||
-             address.ss_family == AF_INET || address.ss_family == AF_INET6;
+    if (require_peer) {
+      size = sizeof address;
+      remote = getsockname(fd, (struct sockaddr *)&address, &size) != 0 ||
+               address.ss_family == AF_INET || address.ss_family == AF_INET6;
+    }
   }
   // Files/Unix sockets pass through. Concurrent fd replacement is outside this prototype's guarantee.
   errno = saved;

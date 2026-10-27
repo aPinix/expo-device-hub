@@ -100,6 +100,12 @@ try:
     run([control, "create", page, "passthrough"])
     run([work / "edges", page], env)
     check("TCP decoy destinations, AF_UNSPEC UDP connectx and unreadable syscall structures")
+    run(flags + ["-dynamiclib", source / "tests/peer-state.c", "-o", work / "peer-state.dylib"])
+    fixture(page)
+    run([control, "create", page, "passthrough"])
+    pending_env = dict(env, DYLD_INSERT_LIBRARIES=str(work / "guard-test.dylib") + ":" + str(work / "peer-state.dylib"))
+    run([work / "edges", page, "pending"], pending_env)
+    check("simulated pending TCP peer cannot bypass addressed send checks; addressed UDP remains permitted")
     for name, contents, permissions in [("missing", None, 0o600), ("short", bytes(8), 0o600),
                                         ("magic", bytes(4096), 0o600), ("permissions", initial, 0o644)]:
         invalid = work / (name + ".page")
