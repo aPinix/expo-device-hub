@@ -112,6 +112,8 @@ static int capability_applies_scoped(char *line, const char *exec_path, char **d
   // that is not an app. An unknown scope loads nowhere.
   if (all_processes) {
     if (strcmp(scope, "process") != 0) return 0;
+  } else if (strcmp(scope, "process") == 0) {
+    return 0;
   } else if (strcmp(scope, "user") == 0) {
     if (strstr(exec_path, USER_APP_MARKER) == NULL) return 0;
   } else if (strcmp(scope, "all") != 0) {
