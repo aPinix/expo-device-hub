@@ -30,6 +30,7 @@ test("resident grid shutdown rejects before closing capture or running a command
         egressGuard: {
           name: "egressGuard",
           dylib: "/resident/guard.dylib",
+          env: { SERVE_SIM_EGRESS_POLICY_FILE: "/resident/policy" },
           scope: "allProcesses",
           loadPhase: "startup",
           ownerPid: null,
@@ -52,7 +53,8 @@ test("resident grid shutdown rejects before closing capture or running a command
     expect(response?.status).toBe(409);
     expect(await response?.json()).toMatchObject({
       ok: false,
-      error: expect.stringContaining("resident egress"),
+      error:
+        "Simulator shutdown is unavailable while resident egress is enrolled; preserve its boot and guard.",
     });
     expect(calls).toEqual([]);
     expect(readFileSync(launchFile, "utf8")).toBe(before);

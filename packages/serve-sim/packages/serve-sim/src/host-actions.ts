@@ -871,9 +871,7 @@ async function runProcedureAsync(
       } catch (error) {
         return {
           stdout: "",
-          stderr:
-            `Could not reboot the device: ${error instanceof Error ? error.message : String(error)}. ` +
-            "The device may now be shut down, so boot it from the sidebar and try again.",
+          stderr: `Could not reboot the device: ${error instanceof Error ? error.message : String(error)}`,
           exitCode: 1,
         };
       }
