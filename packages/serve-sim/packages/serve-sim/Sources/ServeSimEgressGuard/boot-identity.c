@@ -55,29 +55,41 @@ static int device_argument(int pid, const char *suffix) {
   return found;
 }
 
+static int scan_failure(int *pids, int pid, const char *operation) {
+  int error = errno ? errno : EIO;
+  free(pids);
+  fprintf(stderr, "%s for process %d: %s\n", operation, pid, strerror(error));
+  return 1;
+}
+
 int main(int argc, char **argv) {
   if (argc != 2 || !device_id(argv[1])) { fprintf(stderr, "usage: serve-sim-egress-boot-identity UDID\n"); return 2; }
   char suffix[128];
   snprintf(suffix, sizeof suffix, "/Devices/%s/data/var/run/launchd_bootstrap.plist", argv[1]);
-  int bytes = proc_listpids(PROC_ALL_PIDS, 0, NULL, 0);
+  int bytes = proc_listpids(PROC_UID_ONLY, getuid(), NULL, 0);
   if (bytes <= 0 || bytes > INT_MAX / 2) return 1;
   int capacity = bytes * 2;
   int *pids = calloc(1, (size_t)capacity);
   if (!pids) return 1;
-  bytes = proc_listpids(PROC_ALL_PIDS, 0, pids, capacity);
+  bytes = proc_listpids(PROC_UID_ONLY, getuid(), pids, capacity);
   if (bytes <= 0 || bytes >= capacity) { free(pids); return 1; }
   struct proc_bsdinfo selected = {0};
   for (size_t i = 0; i < (size_t)bytes / sizeof(int); i++) {
     if (pids[i] <= 1) continue;
     struct proc_bsdinfo before, after;
+    errno = 0;
     int count = proc_pidinfo(pids[i], PROC_PIDTBSDINFO, 0, &before, sizeof before);
     if (count != (int)sizeof before) {
       if (errno == ESRCH) continue;
-      free(pids); return 1; // Unknown visibility cannot prove absence.
+      return scan_failure(pids, pids[i], "read process identity");
     }
     if (before.pbi_uid != getuid()) continue;
     char path[PROC_PIDPATHINFO_MAXSIZE];
-    if (proc_pidpath(pids[i], path, sizeof path) <= 0) { free(pids); return 1; }
+    errno = 0;
+    if (proc_pidpath(pids[i], path, sizeof path) <= 0) {
+      if (errno == ESRCH) continue;
+      return scan_failure(pids, pids[i], "read process path");
+    }
     const char *name = strrchr(path, '/');
     if (!name || strcmp(name + 1, "launchd_sim") != 0) continue;
     int matches = device_argument(pids[i], suffix);
