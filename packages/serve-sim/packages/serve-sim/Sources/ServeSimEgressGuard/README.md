@@ -5,15 +5,10 @@ This directory contains the native dylib, shared policy page, control helper and
 host tests. [LLP 0007.001](../../../../../../llp/0007.001-runtime-egress-local.plan.md)
 describes the capability-loader and startup/adoption integration.
 
-Build recipes and package entries are present. The guard compiles against
-Simulator SDKs 26.4 and 27.1, and host controller/probe contracts pass. Full package
-builds and Simulator integration have not run. The guard is registered and initial/adoption CLI choices are parsed.
 Explicit startup rejects before boot, app actions or ready output. Private
 adoption checks compatibility before claiming, then rejects at enforcement
 admission before capture/video setup; that claim stays consumed. There is no
-bypass flag.
-The initial performance gate failed, and all-process coverage, draining and
-Simulator validation remain open. Uninstrumented sessions without an egress
+bypass flag. Uninstrumented sessions without an egress
 request retain their existing path, including one-shot adoption, capture and
 recording. The EAS cold fallback is unchanged.
 
@@ -29,8 +24,8 @@ connections. Addressed UDP may use a permitted destination without a peer.
 `status` checks the page, not whether the guard is loaded in another process.
 
 Pass-through is an atomic check followed by the original operation. Block mode
-checks destinations on connect/connectx and sendto/sendmsg, and the peer on
-destination-less send/write/writev (including relevant NOCANCEL symbols). No fd
+checks destinations on connect/connectx and sendto/sendmsg, and the actual peer
+on sends and write/writev (including relevant NOCANCEL symbols). No fd
 cache is used. Destination classification follows build-tools' guard; event
 logging/reporting is not implemented here.
 
@@ -39,7 +34,8 @@ syscalls, sendfile/sendmsg_x, other interposers introduced by late dlopen,
 uninstrumented processes and concurrent fd replacement between check/use are
 outside coverage. Simulator-external processes are outside the guard. Never
 unlink, replace or truncate a live page: existing processes keep its mapping;
-truncation can fault. These lifecycle conditions need an owning boot integration.
+truncation can fault. The boot owner must retain these assets until the bound
+Simulator boot is confirmed dead.
 
 Run on macOS with clang and Python's standard library, with no Simulator:
 
@@ -70,9 +66,9 @@ Run the runner's cleanup tests without clang or networking:
 python3 tests/runner_test.py
 ```
 
-Results are **macOS host mechanism only**. Measurable pass-through regression
-against no guard, or block regression against today's guard, stops integration.
-Warm readiness must eventually self-check resident image/control state and fall
-back cold on failure. All-process enforcement acknowledgement, loader wiring,
-Simulator validation, packaging, proxy readiness and hosted acceptance remain
-separate gates.
+These tests establish **macOS host mechanism only**, not Simulator enforcement
+or hosted acceptance. Before enabling admission, validate final-source cost,
+all-process coverage, in-flight draining, boot lifetime and proxy readiness on
+the target Simulator. A measurable pass-through regression against no guard, or
+block regression against today's guard, blocks admission. Warm readiness must
+self-check the resident image and control page; failure requires cold fallback.
