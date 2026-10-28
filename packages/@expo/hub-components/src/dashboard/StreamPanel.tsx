@@ -14,6 +14,7 @@ import { type DeviceFrameAssets } from "./deviceFrame";
 import { PhoneFrame } from "./PhoneFrame";
 import { ScreenshotToaster, useScreenshotToast } from "./ScreenshotToast";
 import { STREAM_CONTROLS_HEIGHT, StreamControls } from "./StreamControls";
+import { ScreenshotAnnotation } from "./ScreenshotAnnotation";
 
 /** Space between the title pill and the top of the device frame. */
 const TITLE_GAP = 32;
@@ -61,6 +62,8 @@ export function StreamPanel({
   onClipboardFallback?: (request: ClipboardRequest) => void;
 }) {
   const controlsRef = useRef<HTMLDivElement>(null);
+  const [annotating, setAnnotating] = useState(false);
+  const physicalIos = device.physical && device.platform === "ios";
   const [controlsHeight, setControlsHeight] = useState(STREAM_CONTROLS_HEIGHT);
   useLayoutEffect(() => {
     const element = controlsRef.current;
@@ -163,6 +166,7 @@ export function StreamPanel({
             }}
           >
             <StreamControls
+              deviceControlsDisabled={physicalIos}
               recording={client.screenRecording}
               appearance={appearance}
               appearanceDisabled={appearanceDisabled}
@@ -171,10 +175,11 @@ export function StreamPanel({
                   client.setDeviceSetting("appearance", appearance === "dark" ? "light" : "dark");
                 }
               }}
-              onHome={() => client.pressButton("home")}
+              onHome={physicalIos ? undefined : () => client.pressButton("home")}
               onReload={() => client.reload()}
-              onRotate={() => client.rotate()}
+              onRotate={physicalIos ? undefined : () => client.rotate()}
               onSave={captureScreenshot}
+              onAnnotate={client.status === "streaming" ? () => setAnnotating(true) : undefined}
               clipboard={client.capabilities.clipboard}
               clipboardPending={client.clipboardPending}
               onPaste={() => void clipboard.pasteFromDevice()}
@@ -185,6 +190,13 @@ export function StreamPanel({
         </div>
       </div>
       <ScreenshotToaster />
+      <ScreenshotAnnotation
+        key={device.id}
+        device={device}
+        client={client}
+        open={annotating}
+        onClose={() => setAnnotating(false)}
+      />
     </section>
   );
 }

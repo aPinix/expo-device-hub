@@ -15,7 +15,7 @@
  */
 
 import { type AndroidDevice, listDevices as listAndroidDevices } from "@expo/hub-android-utils";
-import { listDevices as listAppleDevices } from "@expo/hub-apple-utils";
+import { listDevices as listAppleDevices, listPhysicalDevices } from "@expo/hub-apple-utils";
 
 import { type DeviceFrameProfileId } from "@expo/hub-components";
 
@@ -142,15 +142,32 @@ function latestTimestamp(...timestamps: Array<number | null>): number | undefine
 /** Every requested simulator and emulator/device, each tagged with its `booted` state. */
 export async function listDevices(platform?: PlatformFilter): Promise<HubDeviceList> {
   const empty = (): PlatformDeviceList => ({ devices: [], error: null });
-  const [simulators, emulators] = await Promise.all([
+  const [simulators, emulators, physical] = await Promise.all([
     platform === "android" ? empty() : listIosSimulators(),
     platform === "ios" ? empty() : listAndroidEmulators(),
+    platform === "android" ? { value: [], error: null } : listPhysicalDevices(),
   ]);
 
   return filterSessionDevices({
-    simulators: simulators.devices,
+    simulators: [
+      ...simulators.devices,
+      ...physical.value
+        .filter((device) => device.connected)
+        .map(
+          (device): HubDevice => ({
+            id: device.udid,
+            name: device.name,
+            version: `iOS ${device.osVersion}`,
+            platform: "ios",
+            booted: true,
+            physical: true,
+            supported: true,
+            deviceFrame: null,
+          }),
+        ),
+    ],
     emulators: emulators.devices,
-    errors: [simulators.error, emulators.error].filter(
+    errors: [simulators.error, emulators.error, toSerializableError(physical.error)].filter(
       (error): error is SerializableError => error !== null,
     ),
   });

@@ -1,0 +1,117 @@
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -2 +2 @@
+-name = "mobile-dev-ios-mirror"
++name = "expo-hub-ios-device"
+@@ -11,2 +11 @@
+-mobile-dev-telemetry = { path = "../telemetry" }
+-idevice = { git = "https://github.com/jkcoxson/idevice", rev = "a64b8867815b3da17b5c927531bdba877e8456ef", default-features = false, features = ["ring", "usbmuxd", "core_device_proxy", "tunnel_tcp_stack", "display_stream"] }
++idevice = { git = "https://github.com/jkcoxson/idevice", rev = "a64b8867815b3da17b5c927531bdba877e8456ef", default-features = false, features = ["ring", "usbmuxd", "core_device_proxy", "tunnel_tcp_stack", "display_stream", "springboardservices"] }
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -162,0 +163,16 @@
++
++[[package]]
++name = "expo-hub-ios-device"
++version = "0.1.0"
++dependencies = [
++ "flate2",
++ "idevice",
++ "napi",
++ "napi-build",
++ "napi-derive",
++ "plist",
++ "thiserror",
++ "tokio",
++ "uuid",
++ "web-time",
++]
+@@ -456,24 +471,0 @@
+-name = "mobile-dev-ios-mirror"
+-version = "0.1.0"
+-dependencies = [
+- "flate2",
+- "idevice",
+- "mobile-dev-telemetry",
+- "napi",
+- "napi-build",
+- "napi-derive",
+- "plist",
+- "thiserror",
+- "tokio",
+- "uuid",
+- "web-time",
+-]
+-
+-[[package]]
+-name = "mobile-dev-telemetry"
+-version = "0.1.0"
+-dependencies = [
+- "cc",
+-]
+-
+-[[package]]
+--- a/src/addon.rs
++++ b/src/addon.rs
+@@ -16,5 +16 @@
+-
+-#[napi_derive::module_init]
+-pub fn initialize_telemetry() {
+-    mobile_dev_telemetry::init("ios-mirror");
+-}
++use idevice::springboardservices::{InterfaceOrientation, SpringBoardServicesClient};
+@@ -96 +91,0 @@
+-        let _timing = mobile_dev_telemetry::Timer::start(mobile_dev_telemetry::Timing::Input);
+@@ -123 +117,0 @@
+-    let _timing = mobile_dev_telemetry::Timer::start(mobile_dev_telemetry::Timing::Connect);
+@@ -243,0 +238 @@
++            let mut touch_orientation = InterfaceOrientation::Portrait;
+@@ -254,0 +250,5 @@
++                                if samples.iter().any(|sample| sample.phase == 0) {
++                                    let mut springboard = SpringBoardServicesClient::connect(&provider).await.map_err(|e| e.to_string())?;
++                                    touch_orientation = springboard.get_interface_orientation().await.map_err(|e| e.to_string())?;
++                                }
++                                let samples = samples.into_iter().map(|sample| sample.oriented(touch_orientation)).collect::<std::result::Result<Vec<_>, _>>()?;
+@@ -308 +307,0 @@
+-                        let _timing = mobile_dev_telemetry::Timer::start(mobile_dev_telemetry::Timing::FrameProcess);
+--- a/src/input.rs
++++ b/src/input.rs
+@@ -5,0 +6 @@
++use idevice::springboardservices::InterfaceOrientation;
+@@ -14,0 +16,18 @@
++}
++
++impl TouchSample {
++    // UniversalHID uses the digitizer's portrait coordinates, even when the
++    // display stream is rotated. Keep one orientation for the whole gesture.
++    pub fn oriented(self, orientation: InterfaceOrientation) -> Result<Self, String> {
++        use InterfaceOrientation::*;
++        normalized(self.x, self.width)?;
++        normalized(self.y, self.height)?;
++        let (x, y, width, height) = match orientation {
++            Portrait => (self.x, self.y, self.width, self.height),
++            PortraitUpsideDown => (self.width - self.x, self.height - self.y, self.width, self.height),
++            LandscapeRight => (self.height - self.y, self.x, self.height, self.width),
++            LandscapeLeft => (self.y, self.width - self.x, self.height, self.width),
++            Unknown => return Err("Cannot determine the device's screen orientation. Unlock it and retry.".into()),
++        };
++        Ok(Self { x, y, width, height, ..self })
++    }
+@@ -113,0 +133,17 @@
++    fn maps_display_touches_to_the_portrait_digitizer_in_every_orientation() {
++        use InterfaceOrientation::*;
++        let point = sample(0, 100.0, 200.0);
++        for (orientation, expected) in [
++            (Portrait, (100.0, 200.0, 400.0, 800.0)),
++            (PortraitUpsideDown, (300.0, 600.0, 400.0, 800.0)),
++            (LandscapeRight, (600.0, 100.0, 800.0, 400.0)),
++            (LandscapeLeft, (200.0, 300.0, 800.0, 400.0)),
++        ] {
++            let p = point.oriented(orientation).unwrap();
++            assert_eq!((p.x, p.y, p.width, p.height), expected);
++        }
++        assert!(point.oriented(Unknown).is_err());
++        assert!(sample(0, -1.0, 0.0).oriented(LandscapeRight).is_err());
++    }
++
++    #[test]

@@ -112,7 +112,7 @@ export function DeviceSection({
             <DeviceListItem
               key={device.id}
               name={device.name}
-              version={device.version}
+              version={device.physical ? `${device.version} · Physical` : device.version}
               unsupported={!device.supported}
               usedByAgent={agentDeviceIds.includes(device.id)}
               selected={device.id === selectedId}
