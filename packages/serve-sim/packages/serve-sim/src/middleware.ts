@@ -14,6 +14,7 @@ import {
   validatedAdditionalDylibs,
 } from "./additional-dylibs";
 import { checkResidentEgressBoot } from "./egress";
+import { assertNoResidentEgress } from "./egress-resources";
 import {
   createReadStream,
   readdirSync,
@@ -2495,6 +2496,18 @@ export function simMiddleware(options?: SimMiddlewareOptions): SimMiddleware {
         if (!/^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/i.test(udid)) {
           res.writeHead(400, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ ok: false, error: "Invalid or missing udid" }));
+          return;
+        }
+        try {
+          assertNoResidentEgress(udid, "Simulator shutdown");
+        } catch (error) {
+          res.writeHead(409, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              ok: false,
+              error: error instanceof Error ? error.message : String(error),
+            }),
+          );
           return;
         }
         // Stop our own in-process capture for this device first (no-op if it

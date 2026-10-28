@@ -308,7 +308,7 @@ readiness wait before binding. Binding is private to that path. This proves
 command/identity ordering only, not insertion coverage [observed: resident boot
 helper and isolated boot-race fixtures].
 
-Camera app injection, direct shutdown and capture reboot reject resident
+Serve-sim camera app injection, direct and preview-grid shutdown, and capture reboot reject resident
 enrollment before obtaining camera resources or changing the device/capture
 state. Camera launch holds the existing device lock through its insert override.
 The resident page and startup record remain intact; dead-boot reclamation is
