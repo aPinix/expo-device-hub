@@ -1,7 +1,12 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "fs";
 import { dirname, isAbsolute, join } from "path";
 import type { CapabilityScope } from "./capabilities";
-import { readLaunchState, type LaunchState, type RecordedCapability } from "./launch-state";
+import {
+  canonicalDeviceKey,
+  readLaunchState,
+  type LaunchState,
+  type RecordedCapability,
+} from "./launch-state";
 import { stateDir } from "./state";
 import { dirnameOf } from "./runtime";
 
@@ -10,8 +15,7 @@ export function capabilityLoaderDir(): string {
 }
 
 export function capabilityLoaderPath(udid?: string): string {
-  const canonical =
-    udid && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(udid) ? udid.toUpperCase() : udid;
+  const canonical = udid ? canonicalDeviceKey(udid) : undefined;
   const enrolled = canonical ? readLaunchState(canonical)?.capabilities.egressGuard : undefined;
   if (enrolled?.resident) return join(dirname(enrolled.dylib), "libServeSimCapabilityLoader.dylib");
   return join(capabilityLoaderDir(), "libServeSimCapabilityLoader.dylib");
@@ -115,9 +119,7 @@ export function commitCapabilityConfig(udid: string, contents: string): void {
 
 // @ref LLP 0007.001#integration-layers — surviving inserts/config are ownership evidence even when launch JSON is lost
 export function assertResidentConfigRetained(udid: string, contents: string): void {
-  const canonical = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(udid)
-    ? udid.toUpperCase()
-    : udid;
+  const canonical = canonicalDeviceKey(udid);
   if (canonical !== udid) {
     if (
       Object.values(readLaunchState(canonical)?.capabilities ?? {}).some(

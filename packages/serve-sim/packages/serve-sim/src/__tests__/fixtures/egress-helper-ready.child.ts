@@ -25,7 +25,7 @@ test("checked resident boot disappears while the real CLI binds its preview", as
   const outputs: string[] = [];
   mock.module("../../egress", () => ({
     ...egress,
-    checkEgressStreamHelper: async () => {
+    checkResidentEgressBoot: async () => {
       if (gone) throw new Error("Simulator boot changed during preview binding");
       return { pid: 1234, startedAt: "1720000000:42" };
     },

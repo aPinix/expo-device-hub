@@ -37,6 +37,18 @@ beforeEach(() => {
 });
 afterEach(() => state.restore());
 
+test("direct shutdown refuses resident enrollment before any device command", async () => {
+  const guard = enrollment();
+  writeLaunchState(udid, { launchArgs: [], capabilities: { egressGuard: guard } });
+  const log = join(state.dir, "shutdown-calls");
+  const { shutdownDevice } = await import("../device");
+  await withShimsAsync({ xcrun: `#!/bin/sh\necho called > '${log}'\nexit 99\n` }, async () => {
+    await expect(shutdownDevice(udid)).rejects.toThrow("resident egress");
+  });
+  expect(existsSync(log)).toBe(false);
+  expect(readLaunchState(udid)?.capabilities.egressGuard).toEqual(guard);
+});
+
 test("a missing resident loader rejects stale cleanup without changing enrollment", async () => {
   const guard = enrollment();
   writeLaunchState(udid, { launchArgs: [], capabilities: { egressGuard: guard } });

@@ -7,6 +7,7 @@ import { useTempStateDir } from "../helpers";
 import { rebootWithCapture } from "../../capture/reboot";
 import { createCaptureRuntime } from "../../capture/runtime";
 import { type CaptureProxy } from "../../capture/mitm-engine";
+import { writeLaunchState } from "../../launch-state";
 
 const UDID = "ABCD1234-0000-0000-0000-0000000000EF";
 const CA_PEM = "-----BEGIN CERTIFICATE-----\nfake\n-----END CERTIFICATE-----\n";
@@ -51,6 +52,35 @@ afterAll(() => {
 });
 
 describe("rebootWithCapture", () => {
+  test("resident egress refuses reboot before capture or device changes", async () => {
+    const privateState = useTempStateDir();
+    const { runtime, deps, calls } = harness();
+    try {
+      await runtime.enableForDevice(UDID);
+      calls.length = 0;
+      const before = runtime.metaFor(UDID);
+      writeLaunchState(UDID, {
+        launchArgs: [],
+        capabilities: {
+          egressGuard: {
+            name: "egressGuard",
+            dylib: "/resident/guard.dylib",
+            scope: "allProcesses",
+            loadPhase: "startup",
+            ownerPid: null,
+            bundleId: null,
+            resident: { boot: { pid: 123, startedAt: "1720000000:42" }, warmupPolicy: "block" },
+          },
+        },
+      });
+      await expect(rebootWithCapture(UDID, true, deps)).rejects.toThrow("resident egress");
+      expect(calls).toEqual([]);
+      expect(runtime.metaFor(UDID)).toEqual(before);
+    } finally {
+      privateState.restore();
+    }
+  });
+
   test("starts the new session with the fields the panel chose", async () => {
     const { runtime, deps } = harness();
     const meta = await rebootWithCapture(UDID, /* enabled */ true, deps, [

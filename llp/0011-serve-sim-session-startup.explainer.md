@@ -300,3 +300,17 @@ readiness wait and preview setup. It rechecks that same identity before writing
 state and before reporting its URL. Failure closes the listener and removes only
 its own session state; cleanup failures retain the original error
 [observed: `src/index.ts`, `src/egress.ts`, `egress-helper-ready` CLI fixture].
+
+A prepared resident boot uses a strict `simctl boot` under the existing device
+lock. An already-booted response fails; the ordinary boot-or-observe fallback is
+not used. The native identity captured after boot must survive the non-booting
+readiness wait before binding. Binding is private to that path. This proves
+command/identity ordering only, not insertion coverage [observed: resident boot
+helper and isolated boot-race fixtures].
+
+Camera app injection, direct shutdown and capture reboot reject resident
+enrollment before obtaining camera resources or changing the device/capture
+state. Camera launch holds the existing device lock through its insert override.
+The resident page and startup record remain intact; dead-boot reclamation is
+still a separate lifecycle requirement [observed: CLI camera, device shutdown,
+capture reboot and their regression fixtures].

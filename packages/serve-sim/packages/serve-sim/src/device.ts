@@ -1,11 +1,12 @@
 import { execSync } from "child_process";
 
-import { simctl } from "./simctl";
-import { checkEgressStreamHelper } from "./egress";
+import { BOOT_TIMEOUT_MS, simctl } from "./simctl";
+export { BOOT_TIMEOUT_MS } from "./simctl";
+import { checkResidentEgressBoot } from "./egress";
 import { simulatorBootStatusArgs } from "./additional-dylibs";
+import { assertNoResidentEgress } from "./egress-resources";
 
 const SHUTDOWN_TIMEOUT_MS = 60_000;
-export const BOOT_TIMEOUT_MS = 120_000;
 
 /**
  * UDID of a booted simulator, or null if none is booted. Prefers an iOS device
@@ -98,14 +99,15 @@ export function isDeviceNotBooted(error: unknown): boolean {
 }
 
 export async function shutdownDevice(udid: string): Promise<void> {
+  assertNoResidentEgress(udid, "Simulator shutdown");
   await simctl(["shutdown", udid], SHUTDOWN_TIMEOUT_MS).catch((error: unknown) => {
     if (!isAlreadyShutDown(error)) throw error;
   });
 }
 
 export async function bootDevice(udid: string): Promise<void> {
-  const resident = await checkEgressStreamHelper(udid);
+  const resident = await checkResidentEgressBoot(udid);
   if (!resident) await simctl(["boot", udid], BOOT_TIMEOUT_MS);
   await simctl(simulatorBootStatusArgs(udid, !!resident), BOOT_TIMEOUT_MS);
-  if (resident) await checkEgressStreamHelper(udid, resident);
+  if (resident) await checkResidentEgressBoot(udid, resident);
 }
