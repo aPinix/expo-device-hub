@@ -38,6 +38,7 @@ test("identifies an iPad by its hardware model when preview fails", async () => 
 });
 
 function fixture(staleInput = false) {
+  let opened = 0;
   let closed = 0;
   let touches = 0;
   let generation = 1;
@@ -64,7 +65,10 @@ function fixture(staleInput = false) {
     },
   };
   const handler = createPhysicalIosHandler(
-    async () => capture,
+    async () => {
+      opened++;
+      return capture;
+    },
     async () => ({
       value: [
         {
@@ -88,8 +92,52 @@ function fixture(staleInput = false) {
         body: JSON.stringify(body),
       }),
     );
-  return { handler, call, counts: () => ({ closed, touches }) };
+  return { handler, call, counts: () => ({ opened, closed, touches }) };
 }
+
+test.each([
+  "http://attacker.example:3344",
+  "http://localhost.attacker.example",
+  "http://127.example.com",
+  "http://192.168.1.20:3344",
+])("rejects a tokenless request whose Host and Origin both name %s", async (origin) => {
+  const { handler, counts } = fixture();
+  try {
+    for (const headers of [{ origin }, { origin, "sec-fetch-site": "same-origin" }, {}]) {
+      const response = await handler.handle(
+        new Request(`${origin}/api/ios-device/open`, {
+          method: "POST",
+          headers: { host: new URL(origin).host, "Content-Type": "application/json", ...headers },
+          body: JSON.stringify({ device: "phone" }),
+        }),
+      );
+      expect(response.status).toBe(403);
+    }
+    expect(counts().opened).toBe(0);
+  } finally {
+    await handler.dispose();
+  }
+});
+
+test.each(["http://localhost:3344", "http://127.0.0.1:3344", "http://[::1]:3344"])(
+  "allows the local physical preview at %s",
+  async (origin) => {
+    const { handler, counts } = fixture();
+    try {
+      const response = await handler.handle(
+        new Request(`${origin}/api/ios-device/open`, {
+          method: "POST",
+          headers: { origin, "sec-fetch-site": "same-origin", "Content-Type": "application/json" },
+          body: JSON.stringify({ device: "phone" }),
+        }),
+      );
+      expect(response.status).toBe(200);
+      expect(counts().opened).toBe(1);
+    } finally {
+      await handler.dispose();
+    }
+  },
+);
 
 test("a native generation change during input keeps the preview alive for a fresh frame", async () => {
   const { handler, call, counts } = fixture(true);

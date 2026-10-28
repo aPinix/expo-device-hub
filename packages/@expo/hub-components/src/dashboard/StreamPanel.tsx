@@ -174,7 +174,7 @@ export function StreamPanel({
                 }
               }}
               onHome={physicalIos ? undefined : () => client.pressButton("home")}
-              onReload={() => client.reload()}
+              onReload={physicalIos ? undefined : () => client.reload()}
               onRotate={physicalIos ? undefined : () => client.rotate()}
               onSave={captureScreenshot}
               clipboard={client.capabilities.clipboard}

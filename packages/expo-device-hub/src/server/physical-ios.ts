@@ -2,6 +2,7 @@ import { createRequire } from "node:module";
 import { randomUUID } from "node:crypto";
 import { listPhysicalDevices } from "@expo/hub-apple-utils";
 import { SERVER_PLATFORM_FILTER } from "./platform-filter";
+import { serveSimAllowsOrigin } from "./serve-sim-options";
 import { isSessionDevice, SERVER_SINGLE_DEVICE } from "./single-device";
 
 type Configuration = {
@@ -84,12 +85,19 @@ export function createPhysicalIosHandler(open = openCapture, discover = listPhys
       clearInterval(expiry);
       await Promise.allSettled([...sessions.keys()].map(close));
     },
-    async handle(request: Request): Promise<Response> {
+    // The caller sets authenticated only after the Hub session-token gate succeeds.
+    async handle(request: Request, authenticated = false): Promise<Response> {
       const url = new URL(request.url);
       if (SERVER_PLATFORM_FILTER === "android" || SERVER_SINGLE_DEVICE?.platform === "android")
         return json({ error: "Device is outside this session." }, 403);
       if (request.method !== "POST") return json({ error: "Method Not Allowed" }, 405);
-      // Also protect tokenless localhost instances from cross-origin device input.
+      // Host supplies url.origin, so matching Origin alone does not stop DNS rebinding.
+      // Reuse the existing loopback allowlist; other hosts require the Hub token gate.
+      if (!authenticated && !serveSimAllowsOrigin([], url))
+        return json(
+          { error: "Physical iOS preview requires a localhost URL or --require-token." },
+          403,
+        );
       const origin = request.headers.get("origin");
       if (
         (origin && origin !== url.origin) ||

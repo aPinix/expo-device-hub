@@ -146,6 +146,7 @@ export function StreamControls({
         <ControlButton
           icon={<RefreshIcon size={ICON_SIZE} strokeWidth={ICON_STROKE} />}
           label="Reload"
+          disabled={deviceControlsDisabled}
           onClick={onReload}
         />
       </ControlGroup>

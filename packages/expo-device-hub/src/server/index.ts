@@ -232,7 +232,7 @@ async function routeRequest(request: Request): Promise<Response | null> {
     return handleEmuRequest(request);
   }
 
-  if (pathname.startsWith("/api/ios-device/")) return physicalIos.handle(request);
+  if (pathname.startsWith("/api/ios-device/")) return physicalIos.handle(request, !!SESSION_TOKEN);
 
   if (pathname === DEVICES_ROUTE) {
     const devices = await listDevices(SERVER_PLATFORM_FILTER);

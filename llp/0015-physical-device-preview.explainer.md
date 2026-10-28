@@ -81,6 +81,13 @@ accept input. Normalized Hub coordinates are converted to the native backend's
 pixel coordinates before dispatch. Closing one viewer stops only that viewer's
 native stream [observed: `src/server/physical-ios.ts`].
 
+Without a session token, physical iOS requests must use the existing serve-sim
+loopback host allowlist (`localhost`, `127.0.0.1`, or `::1`). Matching `Origin` to
+the request URL alone is insufficient because its host comes from the request.
+Other hosts require the Hub's session-token gate before entering the adapter;
+same-origin checks still apply [observed: `physical-ios.ts`, `index.ts`,
+`serve-sim-options.ts`; Devin review of PR #507 on 2026-10-28].
+
 The native patch reads SpringBoard's interface orientation at the beginning of
 each gesture and maps displayed coordinates to the portrait digitizer. This is
 needed for landscape iPads; the display stream is already rotated, while
@@ -108,9 +115,13 @@ reuse Hub's existing corner clipping, including serve-sim's iPad proportions
 [observed: `scripts/ios-device.patch`, `usePhysicalIosDevice.ts`, `PhoneFrame.tsx`].
 
 Physical iOS supports screen viewing, single-contact taps/drags, and the existing
-local screenshot control. Keyboard, multi-touch, hardware buttons, app metadata, accessibility,
+local screenshot control. App reload, keyboard, multi-touch, hardware buttons, app metadata, accessibility,
 logs, recording, device settings and simulated location are not offered by this
 adapter [observed: `hub-client/src/usePhysicalIosDevice.ts`, `NOOP_DEVICE_CLIENT`].
+The physical iOS Reload toolbar button is disabled along with Home and Rotate.
+Reload no longer reconnects the video capture, which did not reload the running
+app [observed: `StreamControls.tsx`, `StreamPanel.tsx`, `usePhysicalIosDevice.ts`;
+Devin review of PR #507 on 2026-10-28].
 
 ## Review questions
 
@@ -157,3 +168,11 @@ corner styles. Human review is still pending.
 Samsung Galaxy S25 FE [confirmed: @aPinix, 2026-10-28].
 Hardware screenshots and identifiers are not committed [observed: local browser
 checks by Codex; human review pending].
+
+For the Devin review fixes, Codex first reproduced the enabled physical iOS Reload
+button and acceptance of matching foreign Host/Origin values with regression tests.
+After the fix, all six root test tasks passed (2,824 passed, three Windows-only
+skips; three unaffected tasks reused cached results). Build, typecheck, lint and
+LLP checks passed. No new physical-device or native test run was needed for these
+toolbar and HTTP admission changes [observed: local command results by Codex on
+2026-10-28].

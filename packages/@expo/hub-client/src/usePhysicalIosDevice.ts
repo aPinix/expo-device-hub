@@ -19,7 +19,6 @@ export function usePhysicalIosDeviceClient({
   const [error, setError] = useState<string | null>(null);
   const [inputError, setInputError] = useState<string | null>(null);
   const [screen, setScreen] = useState<ScreenSize | null>(null);
-  const [retry, setRetry] = useState(0);
   const attachVideo = useCallback(
     (element: HTMLCanvasElement | HTMLImageElement | HTMLVideoElement | null) => {
       canvas.current = element as HTMLCanvasElement | null;
@@ -227,7 +226,7 @@ export function usePhysicalIosDeviceClient({
       if (decoder && decoder.state !== "closed") decoder.close();
       if (session) void request("close", {}, true).catch(() => {});
     };
-  }, [enabled, baseUrl, device, token, retry]);
+  }, [enabled, baseUrl, device, token]);
 
   return {
     ...NOOP_DEVICE_CLIENT,
@@ -238,7 +237,6 @@ export function usePhysicalIosDeviceClient({
     videoKind: "canvas",
     attachVideo,
     sendTouch,
-    reload: () => setRetry((value) => value + 1),
     screenshot: async () => {
       const target = canvas.current;
       if (!target || status !== "streaming") return null;
