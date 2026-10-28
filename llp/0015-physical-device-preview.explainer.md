@@ -9,8 +9,8 @@
 
 ## Scope and governing constraints
 
-Physical Android discovery, physical iPhone/iPad discovery and preview, and
-captured-screen annotations are the scope. The governing foundation is
+Physical Android discovery and physical iPhone/iPad discovery and preview are
+the scope. The governing foundation is
 [LLP 0000](0000-expo-device-hub.explainer.md); the existing input presentation is
 described in the in-flight [LLP 0013](0013-hub-client-input-and-control.explainer.md).
 The applicable constraints are LLP 0000#ui-matches-website,
@@ -107,24 +107,16 @@ metadata is unavailable, the encoded size remains the fallback. Physical screens
 reuse Hub's existing corner clipping, including serve-sim's iPad proportions
 [observed: `scripts/ios-device.patch`, `usePhysicalIosDevice.ts`, `PhoneFrame.tsx`].
 
-Physical iOS supports screen viewing, single-contact taps/drags, local screenshots,
-and annotations. Keyboard, multi-touch, hardware buttons, app metadata, accessibility,
+Physical iOS supports screen viewing, single-contact taps/drags, and the existing
+local screenshot control. Keyboard, multi-touch, hardware buttons, app metadata, accessibility,
 logs, recording, device settings and simulated location are not offered by this
 adapter [observed: `hub-client/src/usePhysicalIosDevice.ts`, `NOOP_DEVICE_CLIENT`].
-
-## Annotations
-
-Both platforms use the same annotation dialog. It freezes a screenshot, accepts
-a normalized rectangular region and text note, and downloads a PNG containing
-the marked screenshot and note. The live device receives no annotation gestures.
-Closing the dialog releases its object URL; switching devices discards its state
-[observed: `hub-components/src/dashboard/ScreenshotAnnotation.tsx`].
 
 ## Review questions
 
 - Maintainers need to decide how to build/distribute the optional Rust addon in
   releases and whether to share it with the reference project [inferred].
-- The native adapter dependency, Android regression fix, and annotation UI can be
+- The native adapter dependency and Android regression fix can be
   reviewed as separate contributions before an upstream PR [inferred].
 - This fork has no fallback decoder for browsers lacking HEVC; it shows an
   actionable error [observed: `usePhysicalIosDevice.ts`].
@@ -133,16 +125,18 @@ Closing the dialog releases its object URL; switching devices discards its state
 
 Codex ran the standard build, typecheck, lint, LLP reference check, affected package
 tests, native tests, and an npm pack dry run on an Apple Silicon Mac on 2026-10-28.
-The final affected suites passed 1,562 tests; the native suite passed 69, including
+The affected suites passed 1,562 tests; the native suite passed 69, including
 stale input generation recovery and display padding cases. One existing client
 timing test failed once during earlier parallel checks, then passed in isolation
 and subsequent complete suite runs. The package dry run included the
-native addon and its license notices [observed: local command results].
+native addon and its license notices. After the toolbar cleanup, build, typecheck,
+lint, LLP references and all 122 HubComponents tests passed again, and the live
+wireless iPad preview was checked in the browser [observed: local command results
+and browser check by Codex].
 
 Live previews were checked with an iPhone 16 Pro, iPad Pro M5, and Samsung Galaxy
 S25 FE. A Samsung tap launched an app; the landscape iPad camera zoom control
-responded after the orientation correction. An iPad screenshot was annotated
-with a region and note and downloaded as a PNG. The follow-up unlocked iPad check
+responded after the orientation correction. The follow-up unlocked iPad check
 opened King Score's Settings and returned to its home screen using Hub touch input
 over USB and, after unplugging, over Wi-Fi. The iPad's cropped canvas measured
 2736 × 2052, removing the padded bottom strip while retaining working touch input

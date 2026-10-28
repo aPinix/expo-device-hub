@@ -88,10 +88,6 @@ live video, taps, drags and screenshots. Keyboard, hardware buttons, accessibili
 inspection, recording and device settings are unavailable on physical iOS.
 The capture adapter uses private CoreDevice services and is experimental.
 
-Choose **Annotate** on either platform to capture a still screen, mark a region,
-add a note, and download an annotated PNG. Notes stay in the browser and are not
-sent to an AI service or posted to GitHub.
-
 Implementation, attribution and open review questions are in
 [LLP 0015](llp/0015-physical-device-preview.explainer.md).
 

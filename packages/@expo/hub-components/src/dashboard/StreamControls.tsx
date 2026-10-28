@@ -8,7 +8,6 @@ import {
 } from "@expo/hub-client";
 import {
   CONTROL_BUTTON_SIZE,
-  Button,
   CameraIcon,
   ClipboardPasteIcon,
   ControlButton,
@@ -75,7 +74,6 @@ export function StreamControls({
   onReload,
   onRotate,
   onSave,
-  onAnnotate,
   deviceControlsDisabled = false,
   recording = null,
   clipboard = false,
@@ -97,7 +95,6 @@ export function StreamControls({
   onRotate?: () => void;
   /** Save a screenshot of the device (triggers a file download). */
   onSave?: () => void;
-  onAnnotate?: () => void;
   deviceControlsDisabled?: boolean;
   recording?: DeviceScreenRecordingStatus | null;
   /** The clipboard actions the device offers. Each one shows only when the device has it. */
@@ -207,11 +204,6 @@ export function StreamControls({
           }
         />
       </ControlGroup>
-      {onAnnotate && (
-        <Button theme="secondary" onClick={onAnnotate}>
-          Annotate
-        </Button>
-      )}
     </div>
   );
 }
