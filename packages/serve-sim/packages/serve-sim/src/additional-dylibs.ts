@@ -7,7 +7,7 @@ import {
   assertResidentConfigRetained,
   renderCapabilityConfig,
 } from "./capability-config";
-import { readLaunchState } from "./launch-state";
+import { canonicalDeviceKey, readLaunchState } from "./launch-state";
 
 export function additionalDylibs(): string[] {
   return [...new Set((process.env.SERVE_SIM_ADDITIONAL_DYLIBS ?? "").split(":").filter(Boolean))];
@@ -27,9 +27,7 @@ export function validatedAdditionalDylibs(): string[] {
 }
 
 function residentBootState(udid: string) {
-  const canonical = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(udid)
-    ? udid.toUpperCase()
-    : udid;
+  const canonical = canonicalDeviceKey(udid);
   const state = readLaunchState(canonical);
   assertResidentConfigRetained(
     canonical,

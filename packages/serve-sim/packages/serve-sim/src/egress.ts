@@ -3,7 +3,7 @@ import { withLaunchStateLock } from "./launch-state-lock";
 import type { SimulatorBootIdentity } from "./launch-state";
 import {
   assertEgressSessionOwner,
-  bindResidentEgressBoot,
+  bootPreparedResidentEgress,
   checkResidentEgress,
   prepareResidentEgress,
   publishResidentEgressPolicy,
@@ -44,8 +44,9 @@ function requireEnforcement(): void {
 export async function requiredEgressStartup(
   udid: string,
   policy: EgressPolicy | undefined,
-  boot: () => Promise<void>,
+  assertActive: () => void,
 ): Promise<boolean> {
+  assertActive();
   const existing = residentEgress(udid);
   if (policy === undefined) {
     if (existing)
@@ -58,16 +59,17 @@ export async function requiredEgressStartup(
   requireEnforcement();
   if (!existing) {
     await prepareResidentEgress(udid, policy);
-    await boot();
-    await bindResidentEgressBoot(udid);
+    await bootPreparedResidentEgress(udid, assertActive);
   }
+  assertActive();
   await publishResidentEgressPolicy(udid, policy);
+  assertActive();
   // The native coverage/drain protocol must replace requireEnforcement before enabling this path.
   return true;
 }
 
 /** Host stream helpers observe the existing boot; they never own a policy choice. */
-export async function checkEgressStreamHelper(
+export async function checkResidentEgressBoot(
   udid: string,
   expected?: SimulatorBootIdentity,
 ): Promise<SimulatorBootIdentity | null> {

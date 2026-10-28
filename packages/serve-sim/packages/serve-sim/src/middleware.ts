@@ -13,7 +13,7 @@ import {
   simulatorBootStatusArgs,
   validatedAdditionalDylibs,
 } from "./additional-dylibs";
-import { checkEgressStreamHelper } from "./egress";
+import { checkResidentEgressBoot } from "./egress";
 import {
   createReadStream,
   readdirSync,
@@ -896,7 +896,7 @@ export async function startDeviceInProcess(
   onBoot?: () => Promise<void>,
 ): Promise<string | null> {
   // Existing resident boots must match their native identity; never restart them with an old page.
-  const resident = await checkEgressStreamHelper(udid);
+  const resident = await checkResidentEgressBoot(udid);
   if (!resident) {
     // `simctl boot` errors when already booted — ignore and let bootstatus confirm.
     await new Promise<void>((resolve) =>
@@ -935,9 +935,9 @@ export async function startDeviceInProcess(
     });
     if (!booted) return `Device ${udid} failed to reach booted state`;
   }
-  if (resident) await checkEgressStreamHelper(udid, resident);
+  if (resident) await checkResidentEgressBoot(udid, resident);
   await onBoot?.();
-  if (resident) await checkEgressStreamHelper(udid, resident);
+  if (resident) await checkResidentEgressBoot(udid, resident);
   writeServeSimState(gridDeviceState(udid, port, base, streamSettings, sessionToken));
   return null;
 }

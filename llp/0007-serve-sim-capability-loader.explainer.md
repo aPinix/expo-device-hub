@@ -264,3 +264,7 @@ Removing only the missing loader would leave later guard processes without their
 startup callback. This rejection does not repair or validate that boot; assets
 remain until its death is confirmed [observed: `disarmStaleCapabilityLoader` and
 its missing-loader regression fixture].
+
+App-only readers recognize the process-wide token and skip it silently; only the
+all-process startup entry point may activate that record [observed: scope parser
+and host parser regression].

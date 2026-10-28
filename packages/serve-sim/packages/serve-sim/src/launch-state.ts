@@ -3,6 +3,15 @@ import { isAbsolute, join } from "path";
 import type { CapabilityLoadPhase, CapabilityScope } from "./capabilities";
 import { stateDir } from "./state";
 
+export function isSimulatorUdid(value: string): boolean {
+  return /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value);
+}
+
+/** Keep legacy non-UUID state keys unchanged. */
+export function canonicalDeviceKey(value: string): string {
+  return isSimulatorUdid(value) ? value.toUpperCase() : value;
+}
+
 function isCapabilityScope(value: unknown): value is CapabilityScope {
   return value === "userApps" || value === "allApps" || value === "allProcesses";
 }

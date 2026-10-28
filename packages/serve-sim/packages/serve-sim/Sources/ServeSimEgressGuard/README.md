@@ -5,8 +5,9 @@ This directory contains the native dylib, shared policy page, control helper and
 host tests. [LLP 0007.001](../../../../../../llp/0007.001-runtime-egress-local.plan.md)
 describes the capability-loader and startup/adoption integration.
 
-Build recipes and package entries are present; these native integration changes
-have not been built. The guard is registered and initial/adoption CLI choices are parsed.
+Build recipes and package entries are present. The guard compiles against
+Simulator SDKs 26.4 and 27.1, and host controller/probe contracts pass. Full package
+builds and Simulator integration have not run. The guard is registered and initial/adoption CLI choices are parsed.
 Explicit startup rejects before boot, app actions or ready output. Private
 adoption checks compatibility before claiming, then rejects at enforcement
 admission before capture/video setup; that claim stays consumed. There is no

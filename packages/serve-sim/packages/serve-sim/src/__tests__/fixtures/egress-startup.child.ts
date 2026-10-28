@@ -2,6 +2,7 @@ import { afterAll, beforeAll, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { useTempStateDir, withShimsAsync } from "../helpers";
+import { writeLaunchState } from "../../launch-state";
 
 const work = mkdtempSync("/tmp/serve-sim-egress-cli-");
 const udid = "11111111-1111-4111-8111-111111111111";
@@ -18,8 +19,12 @@ beforeAll(async () => {
 });
 afterAll(() => rmSync(work, { recursive: true, force: true }));
 
-async function runCli(args: string[], env: Record<string, string | undefined> = {}) {
-  const child = Bun.spawn(["node", cli, udid, ...args, "--quiet"], {
+async function runCli(
+  args: string[],
+  env: Record<string, string | undefined> = {},
+  commandOrDevice = udid,
+) {
+  const child = Bun.spawn(["node", cli, commandOrDevice, ...args, "--quiet"], {
     env: { ...process.env, SERVE_SIM_STREAM_HELPER: undefined, ...env },
     stdout: "pipe",
     stderr: "pipe",
@@ -41,6 +46,34 @@ async function runCli(args: string[], env: Record<string, string | undefined> = 
 function refuseNative(log: string): string {
   return `#!/usr/bin/env node\nrequire('fs').appendFileSync(${JSON.stringify(log)}, 'called\\n');process.exit(99);\n`;
 }
+test("camera refuses resident enrollment before obtaining artifacts or touching the device", async () => {
+  const state = useTempStateDir(),
+    log = join(state.dir, "native-calls");
+  try {
+    writeLaunchState(udid, {
+      launchArgs: [],
+      capabilities: {
+        egressGuard: {
+          name: "egressGuard",
+          dylib: "/resident/guard.dylib",
+          scope: "allProcesses",
+          loadPhase: "startup",
+          ownerPid: null,
+          bundleId: null,
+          resident: { boot: { pid: 123, startedAt: "1720000000:42" }, warmupPolicy: "block" },
+        },
+      },
+    });
+    await withShimsAsync({ xcrun: refuseNative(log) }, async () => {
+      const result = await runCli(["com.test.app", "-d", udid], {}, "camera");
+      expect(result.code).toBe(1);
+      expect(result.stdout + result.stderr).toContain("resident egress");
+      expect(existsSync(log)).toBe(false);
+    });
+  } finally {
+    state.restore();
+  }
+});
 for (const flag of ["--enable", "--disable"]) {
   test(`${flag} egressGuard is a required path, not best effort`, async () => {
     const state = useTempStateDir(),

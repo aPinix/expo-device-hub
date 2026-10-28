@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-import type { SimulatorBootIdentity } from "./launch-state";
+import { isSimulatorUdid, type SimulatorBootIdentity } from "./launch-state";
 import {
-  checkEgressStreamHelper,
+  checkResidentEgressBoot,
   egressGuardCapability,
   egressPolicyOverride,
   requiredEgressStartup,
@@ -77,7 +77,8 @@ import {
   stopLaunchSession,
   waitForLaunchUpdates,
 } from "./launch-manager";
-import { LaunchStateLockTimeoutError } from "./launch-state-lock";
+import { LaunchStateLockTimeoutError, withLaunchStateLock } from "./launch-state-lock";
+import { assertNoResidentEgress } from "./egress-resources";
 import { parseCaptureFields } from "./capture/fields";
 import { parseCaptureProxy } from "./capture/upstream";
 import { killOwnListeners } from "./ports";
@@ -1785,110 +1786,118 @@ Examples:
     process.exit(1);
   }
 
-  let dylib = forceBuild ? null : locateCameraDylib();
-  if (!dylib) {
-    try {
-      dylib = buildCameraDylib();
-    } catch (e: any) {
-      console.error(`Failed to obtain camera dylib: ${e?.message ?? e}`);
-      process.exit(1);
-    }
-  }
-
-  if (filePath && webcam) {
-    console.error("Pick one source: --file or --webcam, not both.");
-    process.exit(1);
-  }
-
-  if (filePath) {
-    filePath = resolve(filePath);
-    if (!existsSync(filePath)) {
-      console.error(`File not found: ${filePath}`);
-      process.exit(1);
-    }
-  }
-
-  // Default source is the animated placeholder. The helper always runs so
-  // the dylib reads from a single shm wire format regardless of source.
-  let source: ResolvedSource;
   try {
-    source = resolveSourceArg({ file: filePath, webcam });
-  } catch (e: any) {
-    console.error(e?.message ?? String(e));
-    process.exit(1);
-  }
-  const helperRes = await ensureHelperWithSource({ udid, source, forceBuild });
-  const shmName = helperRes.shmName;
-  const helperPid = helperRes.helperPid;
+    return await withLaunchStateLock(udid, async () => {
+      assertNoResidentEgress(udid, "Camera app launch");
+      let dylib = forceBuild ? null : locateCameraDylib();
+      if (!dylib) {
+        try {
+          dylib = buildCameraDylib();
+        } catch (e: any) {
+          console.error(`Failed to obtain camera dylib: ${e?.message ?? e}`);
+          process.exit(1);
+        }
+      }
 
-  // Mirror lives in the shm header so it can hot-swap. Push every time —
-  // the dylib watches the byte each frame and re-applies the layer
-  // transform when it differs from the last seen value.
-  if (mirror !== "auto" || !helperRes.relaunched) {
-    try {
-      await sendHelperCommand(udid, { action: "setMirror", mode: mirror });
-    } catch {} // non-fatal; dylib falls back to env or default
-  }
+      if (filePath && webcam) {
+        console.error("Pick one source: --file or --webcam, not both.");
+        process.exit(1);
+      }
 
-  // Always (re)launch the named bundle with the dylib. The helper feeds a
-  // single shm region keyed by udid, so multiple apps on the same simulator
-  // can attach to the same camera stream — but each one has to be launched
-  // with DYLD_INSERT_LIBRARIES, which means a terminate+relaunch every time
-  // we want to bring a new app into the set. Source-only hot-swaps go
-  // through `camera switch`, not this path.
-  try {
-    execFileSync("xcrun", ["simctl", "privacy", udid, "grant", "camera", bundleId], {
-      stdio: "ignore",
+      if (filePath) {
+        filePath = resolve(filePath);
+        if (!existsSync(filePath)) {
+          console.error(`File not found: ${filePath}`);
+          process.exit(1);
+        }
+      }
+
+      // Default source is the animated placeholder. The helper always runs so
+      // the dylib reads from a single shm wire format regardless of source.
+      let source: ResolvedSource;
+      try {
+        source = resolveSourceArg({ file: filePath, webcam });
+      } catch (e: any) {
+        console.error(e?.message ?? String(e));
+        process.exit(1);
+      }
+      const helperRes = await ensureHelperWithSource({ udid, source, forceBuild });
+      const shmName = helperRes.shmName;
+      const helperPid = helperRes.helperPid;
+
+      // Mirror lives in the shm header so it can hot-swap. Push every time —
+      // the dylib watches the byte each frame and re-applies the layer
+      // transform when it differs from the last seen value.
+      if (mirror !== "auto" || !helperRes.relaunched) {
+        try {
+          await sendHelperCommand(udid, { action: "setMirror", mode: mirror });
+        } catch {} // non-fatal; dylib falls back to env or default
+      }
+
+      // Always (re)launch the named bundle with the dylib. The helper feeds a
+      // single shm region keyed by udid, so multiple apps on the same simulator
+      // can attach to the same camera stream — but each one has to be launched
+      // with DYLD_INSERT_LIBRARIES, which means a terminate+relaunch every time
+      // we want to bring a new app into the set. Source-only hot-swaps go
+      // through `camera switch`, not this path.
+      try {
+        execFileSync("xcrun", ["simctl", "privacy", udid, "grant", "camera", bundleId], {
+          stdio: "ignore",
+        });
+      } catch {}
+      try {
+        execFileSync("xcrun", ["simctl", "terminate", udid, bundleId], { stdio: "ignore" });
+      } catch {}
+
+      const env = {
+        ...process.env,
+        SIMCTL_CHILD_DYLD_INSERT_LIBRARIES: [...new Set([dylib, ...callerDylibs])].join(":"),
+        SIMCTL_CHILD_SIMCAM_SHM_NAME: shmName,
+        ...(mirror !== "auto" ? { SIMCTL_CHILD_SIMCAM_MIRROR_MODE: mirror } : {}),
+      };
+
+      let stdoutBuf = "";
+      try {
+        stdoutBuf = execFileSync("xcrun", ["simctl", "launch", udid, bundleId], {
+          env,
+          encoding: "utf-8",
+        });
+      } catch (e: any) {
+        console.error(`simctl launch failed: ${e?.stderr ?? e?.message ?? e}`);
+        process.exit(1);
+      }
+
+      const pidMatch = stdoutBuf.trim().match(/:\s*(\d+)\s*$/);
+      const pid = pidMatch ? Number(pidMatch[1]) : null;
+
+      if (helperPid) recordInjectedBundle(udid, bundleId, helperPid);
+
+      const result = {
+        udid,
+        bundleId,
+        pid,
+        dylib,
+        source: source.kind,
+        arg: source.arg ?? null,
+        shm: shmName,
+        helperPid,
+        mirror,
+        hotSwapped: false,
+        helperRelaunched: helperRes.relaunched,
+      };
+      if (quiet) {
+        console.log(JSON.stringify(result));
+      } else {
+        const verb = helperRes.relaunched ? "Injected" : "Attached";
+        console.log(`📷 ${verb} camera into ${bundleId} (pid ${pid ?? "?"}) on ${udid}`);
+        console.log(`   source: ${source.kind}${source.arg ? ` (${source.arg})` : ""}`);
+        if (helperPid) console.log(`   helper pid: ${helperPid}  (shm ${shmName})`);
+        console.log(`   dylib: ${dylib}`);
+      }
     });
-  } catch {}
-  try {
-    execFileSync("xcrun", ["simctl", "terminate", udid, bundleId], { stdio: "ignore" });
-  } catch {}
-
-  const env = {
-    ...process.env,
-    SIMCTL_CHILD_DYLD_INSERT_LIBRARIES: [...new Set([dylib, ...callerDylibs])].join(":"),
-    SIMCTL_CHILD_SIMCAM_SHM_NAME: shmName,
-    ...(mirror !== "auto" ? { SIMCTL_CHILD_SIMCAM_MIRROR_MODE: mirror } : {}),
-  };
-
-  let stdoutBuf = "";
-  try {
-    stdoutBuf = execFileSync("xcrun", ["simctl", "launch", udid, bundleId], {
-      env,
-      encoding: "utf-8",
-    });
-  } catch (e: any) {
-    console.error(`simctl launch failed: ${e?.stderr ?? e?.message ?? e}`);
+  } catch (error) {
+    printStartupError(startupErrorMessage(error), quiet);
     process.exit(1);
-  }
-
-  const pidMatch = stdoutBuf.trim().match(/:\s*(\d+)\s*$/);
-  const pid = pidMatch ? Number(pidMatch[1]) : null;
-
-  if (helperPid) recordInjectedBundle(udid, bundleId, helperPid);
-
-  const result = {
-    udid,
-    bundleId,
-    pid,
-    dylib,
-    source: source.kind,
-    arg: source.arg ?? null,
-    shm: shmName,
-    helperPid,
-    mirror,
-    hotSwapped: false,
-    helperRelaunched: helperRes.relaunched,
-  };
-  if (quiet) {
-    console.log(JSON.stringify(result));
-  } else {
-    const verb = helperRes.relaunched ? "Injected" : "Attached";
-    console.log(`📷 ${verb} camera into ${bundleId} (pid ${pid ?? "?"}) on ${udid}`);
-    console.log(`   source: ${source.kind}${source.arg ? ` (${source.arg})` : ""}`);
-    if (helperPid) console.log(`   helper pid: ${helperPid}  (shm ${shmName})`);
-    console.log(`   dylib: ${dylib}`);
   }
 }
 
@@ -2010,7 +2019,7 @@ async function serve(
   const verifyResidentBoots = async () => {
     if (sessionStopping) throw new Error("Session is stopping");
     for (const [udid, boot] of Object.entries(options.residentBoots ?? {}))
-      await checkEgressStreamHelper(udid, boot);
+      await checkResidentEgressBoot(udid, boot);
   };
   try {
     await verifyResidentBoots();
@@ -2982,29 +2991,24 @@ Examples:
           }
         }
         if (egressPolicy !== undefined) {
-          if (
-            targets.length !== 1 ||
-            !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(targets[0]!)
-          )
+          if (targets.length !== 1 || !isSimulatorUdid(targets[0]!))
             throw new Error("Resident egress requires one exact Simulator UDID");
           targets = targets.map((udid) => udid.toUpperCase());
         }
         // @ref LLP 0011#resident-egress-startup — explicit egress cannot use best-effort capability preparation
         for (const udid of targets) {
-          const observed = isStreamHelper ? await checkEgressStreamHelper(udid) : null;
+          const observed = isStreamHelper ? await checkResidentEgressBoot(udid) : null;
           const handled = isStreamHelper
             ? !!observed
-            : await requiredEgressStartup(udid, egressPolicy, async () => {
-                if (sessionStopping) throw new Error("Session is stopping");
-                await ensureBooted(udid);
+            : await requiredEgressStartup(udid, egressPolicy, () => {
                 if (sessionStopping) throw new Error("Session is stopping");
               });
           if (observed) {
             await simctl(simulatorBootStatusArgs(udid, true), BOOT_TIMEOUT_MS);
-            await checkEgressStreamHelper(udid, observed);
+            await checkResidentEgressBoot(udid, observed);
           }
           if (handled) {
-            const boot = observed ?? (await checkEgressStreamHelper(udid));
+            const boot = observed ?? (await checkResidentEgressBoot(udid));
             if (!boot) throw new Error("Resident egress enrollment disappeared during startup");
             residentBoots[udid] = boot;
           }

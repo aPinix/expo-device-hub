@@ -15,6 +15,7 @@ function commandOutput(args: string[], stdout: string): string {
 }
 
 const DEFAULT_TIMEOUT_MS = 30_000;
+export const BOOT_TIMEOUT_MS = 120_000;
 const DEFAULT_MAX_BUFFER = 4 * 1024 * 1024;
 
 // Errors nameTimeout labeled, tracked by identity so arguments with newlines still match.
