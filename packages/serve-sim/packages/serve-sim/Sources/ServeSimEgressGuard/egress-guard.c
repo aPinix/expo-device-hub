@@ -4,7 +4,6 @@
 #include "destination.h"
 #include <errno.h>
 #include <mach/mach.h>
-#include <mach/mach_vm.h>
 #include <stdlib.h>
 #include <sys/uio.h>
 #include <unistd.h>
@@ -30,9 +29,9 @@ static int eg_passthrough(void) {
 // @ref LLP 0007.001#native-argument-handling — preserve syscall-style faults when inspecting caller memory
 static int eg_copy(void *destination, const void *source, size_t size) {
   if (size == 0) return 1;
-  mach_vm_size_t copied = 0;
-  if (!source || mach_vm_read_overwrite(mach_task_self(), (mach_vm_address_t)(uintptr_t)source,
-      (mach_vm_size_t)size, (mach_vm_address_t)(uintptr_t)destination, &copied) != KERN_SUCCESS || copied != size) {
+  vm_size_t copied = 0;
+  if (!source || vm_read_overwrite(mach_task_self(), (vm_address_t)(uintptr_t)source,
+      (vm_size_t)size, (vm_address_t)(uintptr_t)destination, &copied) != KERN_SUCCESS || copied != size) {
     errno = EFAULT; return 0;
   }
   return 1;
