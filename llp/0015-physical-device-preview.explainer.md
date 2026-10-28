@@ -134,6 +134,16 @@ lint, LLP references and all 122 HubComponents tests passed again, and the live
 wireless iPad preview was checked in the browser [observed: local command results
 and browser check by Codex].
 
+Before PR submission, the root `bun run test` command also passed all six configured
+package test tasks: 2,812 passed, three Windows-only cases skipped. The unchanged
+Android hardware H.264 encoder test timed out on the first full run, then passed
+in isolation and on the full-command rerun. The exact PR-template build and
+typecheck commands passed as well. An identical mocked Samsung discovery test in
+isolated exported source trees failed against upstream `9688df9f` (empty device
+list) and passed against branch `f1530eff`. This is follow-up regression evidence;
+a failing-test-first commit sequence was not recorded [observed: local command
+results by Codex on 2026-10-28].
+
 Live previews were checked with an iPhone 16 Pro, iPad Pro M5, and Samsung Galaxy
 S25 FE. A Samsung tap launched an app; the landscape iPad camera zoom control
 responded after the orientation correction. The follow-up unlocked iPad check
@@ -143,5 +153,7 @@ over USB and, after unplugging, over Wi-Fi. The iPad's cropped canvas measured
 and the existing tablet corner proportions. The iPhone canvas measured
 1206 × 2622 after cropping; iPhone and Samsung previews retained their existing
 corner styles. Human review is still pending.
+@aPinix also reports manually using the iPad Pro 13-inch (M5), iPhone 16 Pro, and
+Samsung Galaxy S25 FE [confirmed: @aPinix, 2026-10-28].
 Hardware screenshots and identifiers are not committed [observed: local browser
 checks by Codex; human review pending].
