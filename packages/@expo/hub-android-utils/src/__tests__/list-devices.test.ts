@@ -6,6 +6,23 @@ const missingAvdmanager = { message: "avdmanager unavailable", error: new Error(
 const phone = "test-samsung";
 
 describe("partial device discovery", () => {
+  test("reports USB and both ADB wireless serial formats without guessing unknown transports", async () => {
+    const listed = await listDevices({
+      runAvdmanagerListAvd: async () => result(null),
+      runAdbDevices: async () =>
+        result(
+          "List of devices attached\nusb-phone device usb:1-2\n192.0.2.1:5555 device\nadb-phone-key._adb-tls-connect._tcp device\nunknown device\n",
+        ),
+      runAdbGetprop: async () => result("[ro.product.model]: [Phone]"),
+    });
+    expect(listed.value.map((device) => device.transport)).toEqual([
+      "usb",
+      "wifi",
+      "wifi",
+      undefined,
+    ]);
+  });
+
   test("keeps a connected Samsung when Android command-line tools are missing", async () => {
     const listed = await listDevices({
       runAvdmanagerListAvd: async () => result(null, missingAvdmanager),

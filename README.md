@@ -71,9 +71,19 @@ node packages/expo-device-hub/dist/server/cli.mjs --port 3344
 The native build downloads a pinned, checksum-verified Callstack adapter and
 compiles it locally; it does not require the Codex plugin to be installed.
 
+For iOS Wi-Fi preview, connect once by USB, trust the Mac, and enable **Show this
+iPhone/iPad when on Wi-Fi** in Finder. Keep both devices on the same network.
+Xcode can discover a device over its own wireless tunnel even when this separate
+Wi-Fi access is disabled; discovery alone does not guarantee preview access.
+If the Finder option is already enabled but preview fails, reconnect by USB once
+and retry after disconnecting it.
+
 Open `http://localhost:3344`, then select a device under **iOS Devices** or
 **Android Devices**. Simulators and Emulators keep their own groups. Physical
-iOS uses HEVC WebCodecs; use a browser with HEVC support. It currently supports
+iOS devices are identified from their hardware model; iPads show iPadOS. USB and
+Wi-Fi icons show the discovered connection, with a label on hover. The existing
+discovery loop automatically updates arrivals, departures, and connection changes.
+Physical iOS uses HEVC WebCodecs; use a browser with HEVC support. It currently supports
 live video, taps, drags and screenshots. Keyboard, hardware buttons, accessibility
 inspection, recording and device settings are unavailable on physical iOS.
 The capture adapter uses private CoreDevice services and is experimental.

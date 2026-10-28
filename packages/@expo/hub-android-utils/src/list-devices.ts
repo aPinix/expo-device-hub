@@ -70,6 +70,13 @@ async function inspectConnectedDevices(
     const inspected = await inspectDevice(adb, device.serial, tools);
     error ??= inspected.error;
     if (inspected.error) continue;
+    if (!inspected.value.isEmulator) {
+      inspected.value.transport = device.fields.usb
+        ? "usb"
+        : /:\d+$|\._adb-tls-connect\._tcp\.?$/.test(device.serial)
+          ? "wifi"
+          : undefined;
+    }
     connected.push(inspected.value);
   }
   return result(connected, error);

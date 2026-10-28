@@ -118,6 +118,8 @@ export function usePhysicalIosDeviceClient({
     setError(null);
     setInputError(null);
     setScreen(null);
+    const target = canvas.current;
+    target?.getContext("2d")?.clearRect(0, 0, target.width, target.height);
     void (async () => {
       try {
         if (typeof VideoDecoder === "undefined")
@@ -136,11 +138,11 @@ export function usePhysicalIosDeviceClient({
             try {
               if (stopped || !canvas.current) return;
               const target = canvas.current;
-              if (target.width !== frame.displayWidth || target.height !== frame.displayHeight) {
-                target.width = frame.displayWidth;
-                target.height = frame.displayHeight;
+              if (target.width !== width || target.height !== height) {
+                target.width = width;
+                target.height = height;
               }
-              target.getContext("2d")?.drawImage(frame, 0, 0);
+              target.getContext("2d")?.drawImage(frame, 0, 0, width, height, 0, 0, width, height);
               setStatus("streaming");
             } finally {
               frame.close();
@@ -159,12 +161,12 @@ export function usePhysicalIosDeviceClient({
           if (stopped) break;
           if (batch.configuration) {
             const config = batch.configuration;
-            width = config.width;
-            height = config.height;
+            width = config.displayWidth ?? config.width;
+            height = config.displayHeight ?? config.height;
             configuration = {
               codec: config.codec,
-              codedWidth: width,
-              codedHeight: height,
+              codedWidth: config.width,
+              codedHeight: config.height,
               description: bytes(config.description),
               optimizeForLatency: true,
               hardwareAcceleration: "prefer-hardware",

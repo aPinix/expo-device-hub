@@ -79,13 +79,12 @@ export function PhoneFrame({
   const [dismissedInteractionId, setDismissedInteractionId] = useState<string | null>(null);
   const {
     ratio: fallbackRatio,
-    radiusFraction: defaultRadius,
-    squircle: defaultSquircle,
-  } = CONFIG[device.platform];
-  // Physical iPads can have a wide landscape display. A generic phone mask
-  // would cut off their status bar and corner controls.
-  const radiusFraction = device.physical ? 0 : defaultRadius;
-  const squircle = !device.physical && defaultSquircle;
+    radiusFraction,
+    squircle,
+  } = device.model?.startsWith("iPad")
+    ? // Reuse serve-sim's iPad frame proportions (430 wide, 16 bezel, 12 inner radius).
+      { ratio: 430 / 605, radiusFraction: 12 / (430 - 32), squircle: false }
+    : CONFIG[device.platform];
 
   // Prefer the live screen's aspect ratio once known, so the stream fills the
   // frame 1:1 instead of being stretched to the placeholder's body ratio. Uses

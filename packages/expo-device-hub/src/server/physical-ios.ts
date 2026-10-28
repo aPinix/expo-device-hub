@@ -8,6 +8,8 @@ type Configuration = {
   revision: number;
   width: number;
   height: number;
+  displayWidth?: number;
+  displayHeight?: number;
   codec: string;
   description: Buffer;
 };
@@ -45,6 +47,7 @@ function openCapture(udid: string): Promise<PhysicalCapture> {
 type Session = {
   capture: PhysicalCapture;
   udid: string;
+  model: string;
   expires: number;
   reading: boolean;
   inputting: boolean;
@@ -114,6 +117,7 @@ export function createPhysicalIosHandler(open = openCapture, discover = listPhys
       } catch {
         return json({ error: "Expected JSON body." }, 400);
       }
+      let model: string | undefined;
       try {
         if (disposed) return json({ error: "Device server is stopping." }, 503);
         if (url.pathname.endsWith("/open")) {
@@ -127,7 +131,10 @@ export function createPhysicalIosHandler(open = openCapture, discover = listPhys
           opening++;
           try {
             const listed = await discover();
-            if (!listed.value.some((device) => device.udid === body.device && device.connected))
+            const device = listed.value.find(
+              (device) => device.udid === body.device && device.connected,
+            );
+            if (!device)
               return json(
                 {
                   error:
@@ -135,6 +142,7 @@ export function createPhysicalIosHandler(open = openCapture, discover = listPhys
                 },
                 409,
               );
+            model = device.model;
             const capture = await open(body.device);
             if (disposed || request.signal.aborted) {
               await capture.close();
@@ -144,6 +152,7 @@ export function createPhysicalIosHandler(open = openCapture, discover = listPhys
             sessions.set(id, {
               capture,
               udid: body.device,
+              model,
               expires: Date.now() + 30_000,
               reading: false,
               inputting: false,
@@ -157,6 +166,7 @@ export function createPhysicalIosHandler(open = openCapture, discover = listPhys
         const session = sessions.get(body.session);
         if (!session || session.expires < Date.now())
           return json({ error: "Preview expired. Reconnect the device." }, 410);
+        model = session.model;
         session.expires = Date.now() + 30_000;
         if (url.pathname.endsWith("/close")) {
           await close(body.session);
@@ -205,6 +215,17 @@ export function createPhysicalIosHandler(open = openCapture, discover = listPhys
               })),
               body.generation,
             );
+          } catch (error) {
+            // Native recovery can advance the generation between /read and /input.
+            if (
+              error instanceof Error &&
+              error.message === "Wait for a fresh physical iOS screen before sending input."
+            ) {
+              session.generation = undefined;
+              session.capture.requestKeyframe();
+              return json({ error: error.message }, 409);
+            }
+            throw error;
           } finally {
             session.inputting = false;
           }
@@ -213,7 +234,8 @@ export function createPhysicalIosHandler(open = openCapture, discover = listPhys
         return json({ error: "Unknown physical iOS operation." }, 404);
       } catch (error) {
         if (typeof body.session === "string") await close(body.session).catch(() => {});
-        return json({ error: error instanceof Error ? error.message : String(error) }, 503);
+        const message = error instanceof Error ? error.message : String(error);
+        return json({ error: model ? `${model}: ${message}` : message }, 503);
       }
     },
   };

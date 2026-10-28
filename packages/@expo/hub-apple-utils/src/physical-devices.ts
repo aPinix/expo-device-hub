@@ -6,42 +6,35 @@ export interface PhysicalAppleDevice {
   udid: string;
   name: string;
   model: string;
+  kind: "iPhone" | "iPad";
   osVersion: string;
   connected: boolean;
   transport: string | null;
 }
 
-/** Xcode 27's nondeprecated CoreDevice schema includes both iPhone and iPad. */
+/** xcdevice reports USB availability even before CoreDevice establishes its tunnel. */
 export function parsePhysicalDevices(stdout: string): PhysicalAppleDevice[] {
   const data = JSON.parse(stdout);
-  if (
-    data?.info?.outcome !== "success" ||
-    !Number.isInteger(data.info.jsonVersion) ||
-    data.info.jsonVersion < 5 ||
-    !Array.isArray(data?.result?.devices)
-  ) {
-    throw new Error("Physical iOS devices require Xcode 27 or later.");
-  }
-  return data.result.devices.flatMap((entry: any) => {
-    const { hardware, state, software, connection } = entry?.properties ?? {};
+  if (!Array.isArray(data)) throw new Error("Invalid Xcode device list.");
+  return data.flatMap((entry: any) => {
     if (
-      hardware?.reality !== "physical" ||
-      hardware.platform !== "iOS" ||
-      !/^(iPhone|iPad)/.test(hardware.productType ?? "")
+      entry?.simulator !== false ||
+      entry.platform !== "com.apple.platform.iphoneos" ||
+      !/^(iPhone|iPad)/.test(entry.modelCode ?? "") ||
+      typeof entry.identifier !== "string" ||
+      typeof entry.name !== "string"
     )
       return [];
-    if (typeof hardware.udid !== "string" || typeof state?.name !== "string") return [];
     return [
       {
-        udid: hardware.udid,
-        name: state.name,
-        model:
-          typeof hardware.marketingName === "string"
-            ? hardware.marketingName
-            : hardware.productType,
-        osVersion: software?.osVersionNumber?.stringValue ?? "",
-        connected: connection?.state === "connected",
-        transport: connection?.transportType ?? null,
+        udid: entry.identifier,
+        name: entry.name,
+        model: typeof entry.modelName === "string" ? entry.modelName : entry.modelCode,
+        kind: entry.modelCode.startsWith("iPad") ? "iPad" : "iPhone",
+        osVersion: (entry.operatingSystemVersion ?? "").split(" ")[0],
+        connected: entry.available === true && entry.ignored !== true,
+        transport:
+          entry.interface === "usb" ? "usb" : entry.interface === "network" ? "wifi" : null,
       },
     ];
   });
@@ -52,21 +45,10 @@ let lastDiscovery: { devices: PhysicalAppleDevice[]; at: number } | undefined;
 export async function listPhysicalDevices(): Promise<AppleUtilsResult<PhysicalAppleDevice[]>> {
   if (process.platform !== "darwin") return result([]);
   try {
-    const { stdout } = await promisify(execFile)(
-      "xcrun",
-      [
-        "devicectl",
-        "list",
-        "devices",
-        "--quiet",
-        "--timeout",
-        "10",
-        "--omit-deprecated-fields-in-json",
-        "--json-output",
-        "-",
-      ],
-      { timeout: 15_000, maxBuffer: 4 * 1024 * 1024 },
-    );
+    const { stdout } = await promisify(execFile)("xcrun", ["xcdevice", "list", "--timeout", "1"], {
+      timeout: 15_000,
+      maxBuffer: 4 * 1024 * 1024,
+    });
     const devices = parsePhysicalDevices(stdout);
     lastDiscovery = { devices, at: Date.now() };
     return result(devices);

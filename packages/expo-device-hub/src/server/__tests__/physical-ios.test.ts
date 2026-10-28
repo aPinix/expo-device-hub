@@ -1,7 +1,43 @@
 import { expect, test } from "bun:test";
 import { createPhysicalIosHandler, type PhysicalCapture } from "../physical-ios";
 
-function fixture() {
+test("identifies an iPad by its hardware model when preview fails", async () => {
+  const handler = createPhysicalIosHandler(
+    async () => {
+      throw new Error("Connect by USB or enable Wi-Fi access in Finder.");
+    },
+    async () => ({
+      value: [
+        {
+          udid: "tablet",
+          name: "My tablet",
+          model: "iPad Pro 13-inch (M5)",
+          kind: "iPad",
+          osVersion: "27.2",
+          connected: true,
+          transport: "wifi",
+        },
+      ],
+      error: null,
+    }),
+  );
+  try {
+    const response = await handler.handle(
+      new Request("http://localhost/api/ios-device/open", {
+        method: "POST",
+        body: JSON.stringify({ device: "tablet" }),
+      }),
+    );
+    expect(response.status).toBe(503);
+    expect((await response.json()).error).toBe(
+      "iPad Pro 13-inch (M5): Connect by USB or enable Wi-Fi access in Finder.",
+    );
+  } finally {
+    await handler.dispose();
+  }
+});
+
+function fixture(staleInput = false) {
   let closed = 0;
   let touches = 0;
   let generation = 1;
@@ -12,6 +48,11 @@ function fixture() {
       dropped: 0,
     }),
     touch: async (samples) => {
+      if (staleInput) {
+        staleInput = false;
+        generation++;
+        throw new Error("Wait for a fresh physical iOS screen before sending input.");
+      }
       expect(samples[0]).toMatchObject({ x: 50, y: 100, width: 100, height: 200 });
       touches++;
     },
@@ -30,6 +71,7 @@ function fixture() {
           udid: "phone",
           name: "iPhone",
           model: "iPhone",
+          kind: "iPhone",
           osVersion: "27",
           connected: true,
           transport: "wired",
@@ -48,6 +90,26 @@ function fixture() {
     );
   return { handler, call, counts: () => ({ closed, touches }) };
 }
+
+test("a native generation change during input keeps the preview alive for a fresh frame", async () => {
+  const { handler, call, counts } = fixture(true);
+  try {
+    const { session } = await (await call("open", { device: "phone" })).json();
+    const batch = await (await call("read", { session })).json();
+    const samples = [{ phase: 0, x: 0.5, y: 0.5, width: 100, height: 200 }];
+    expect((await call("input", { session, generation: batch.generation, samples })).status).toBe(
+      409,
+    );
+    expect(counts().closed).toBe(0);
+    const fresh = await (await call("read", { session })).json();
+    expect(fresh.generation).toBeGreaterThan(batch.generation);
+    expect((await call("input", { session, generation: fresh.generation, samples })).status).toBe(
+      200,
+    );
+  } finally {
+    await handler.dispose();
+  }
+});
 
 test("requires a displayed generation, validates coordinates, and closes only its session", async () => {
   const { handler, call, counts } = fixture();

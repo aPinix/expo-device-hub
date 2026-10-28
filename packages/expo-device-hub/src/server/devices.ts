@@ -45,6 +45,8 @@ export interface HubDevice {
    * Physical devices can't be removed from Hub, so the UI hides that action.
    */
   physical: boolean;
+  transport?: "usb" | "wifi";
+  model?: string;
   /** Whether this device type is in the set currently supported and tested by Hub. */
   supported: boolean;
   /** Frame artwork available for this exact device model, or null when none is available. */
@@ -114,6 +116,7 @@ export async function listAndroidEmulators(): Promise<PlatformDeviceList> {
         platform: "android" as const,
         booted: device.booted,
         physical: device.type === "device",
+        transport: device.transport,
         supported: isSupportedAndroidDevice(device),
         deviceFrame: androidDeviceFrame(device),
         lastUsedAt: latestTimestamp(device.lastBootedAt),
@@ -157,10 +160,15 @@ export async function listDevices(platform?: PlatformFilter): Promise<HubDeviceL
           (device): HubDevice => ({
             id: device.udid,
             name: device.name,
-            version: `iOS ${device.osVersion}`,
+            version: `${device.kind === "iPad" ? "iPadOS" : "iOS"} ${device.osVersion}`,
             platform: "ios",
             booted: true,
             physical: true,
+            model: device.model,
+            transport:
+              device.transport === "usb" || device.transport === "wifi"
+                ? device.transport
+                : undefined,
             supported: true,
             deviceFrame: null,
           }),
