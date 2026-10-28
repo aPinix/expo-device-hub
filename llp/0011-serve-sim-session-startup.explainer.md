@@ -320,5 +320,6 @@ Serve-sim camera app injection, direct and preview-grid shutdown, and capture re
 enrollment before obtaining camera resources or changing the device/capture
 state. Camera launch holds the existing device lock through its insert override.
 The resident page and startup record remain intact; dead-boot reclamation is
-still a separate lifecycle requirement [observed: CLI camera, device shutdown,
-capture reboot and their regression fixtures].
+still a separate lifecycle requirement. Capture-reboot errors report the cause
+without guessing whether the device shut down [observed: CLI camera, device and
+preview-grid shutdown, capture reboot, host-action errors and their regression fixtures].

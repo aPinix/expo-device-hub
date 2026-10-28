@@ -56,6 +56,7 @@ test("camera refuses resident enrollment before obtaining artifacts or touching 
         egressGuard: {
           name: "egressGuard",
           dylib: "/resident/guard.dylib",
+          env: { SERVE_SIM_EGRESS_POLICY_FILE: "/resident/policy" },
           scope: "allProcesses",
           loadPhase: "startup",
           ownerPid: null,
@@ -67,7 +68,9 @@ test("camera refuses resident enrollment before obtaining artifacts or touching 
     await withShimsAsync({ xcrun: refuseNative(log) }, async () => {
       const result = await runCli(["com.test.app", "-d", udid], {}, "camera");
       expect(result.code).toBe(1);
-      expect(result.stdout + result.stderr).toContain("resident egress");
+      expect(JSON.parse(result.stdout).error).toBe(
+        "Camera app launch is unavailable while resident egress is enrolled; preserve its boot and guard.",
+      );
       expect(existsSync(log)).toBe(false);
     });
   } finally {

@@ -65,6 +65,7 @@ describe("rebootWithCapture", () => {
           egressGuard: {
             name: "egressGuard",
             dylib: "/resident/guard.dylib",
+            env: { SERVE_SIM_EGRESS_POLICY_FILE: "/resident/policy" },
             scope: "allProcesses",
             loadPhase: "startup",
             ownerPid: null,
@@ -73,7 +74,19 @@ describe("rebootWithCapture", () => {
           },
         },
       });
-      await expect(rebootWithCapture(UDID, true, deps)).rejects.toThrow("resident egress");
+      const refusal =
+        "Capture reboot is unavailable while resident egress is enrolled; preserve its boot and guard.";
+      await expect(rebootWithCapture(UDID, true, deps)).rejects.toThrow(refusal);
+      const { runHostActionAsync } = await import("../../host-actions");
+      const result = await runHostActionAsync(
+        { action: "capture.reboot", params: { udid: UDID, enabled: true } },
+        "true",
+      );
+      expect(result).toEqual({
+        stdout: "",
+        stderr: `Could not reboot the device: ${refusal}`,
+        exitCode: 1,
+      });
       expect(calls).toEqual([]);
       expect(runtime.metaFor(UDID)).toEqual(before);
     } finally {
